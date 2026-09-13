@@ -15,7 +15,7 @@ const TANK_R = 16;
 const BULLET_R = 4;
 const BULLET_SPEED = 7;
 const TANK_SPEED = 2.2;
-const FIRE_COOLDOWN = 350;
+const FIRE_COOLDOWN = 600;
 const ROUND_TIME = 60000;
 const RESTART_DELAY = 4000;
 const MAX_PLAYERS = 4;
@@ -26,7 +26,7 @@ const POWERUP_R = 14;
 const POWERUP_DURATION = 8000;
 const POWERUP_RESPAWN = 12000;
 const SPEED_MULT = 1.7;
-const RAPID_COOLDOWN = 120;
+const RAPID_COOLDOWN = 240;
 const TRIPLE_SPREAD = 0.26; // radians, ~15 degrees
 const RICOCHET_BOUNCES = 3;
 
@@ -49,12 +49,18 @@ const TANK_PARTS = {
 
 function defaultDesign(index, colorHex) {
     return {
+        name: '',
         hull: 'classic',
         turret: 'square',
         barrel: 'medium',
         treads: 'treads',
         color: colorHex || TANK_COLORS[index % TANK_COLORS.length].hex,
     };
+}
+
+function sanitizeName(value, fallback) {
+    const raw = typeof value === 'string' ? value : fallback;
+    return raw.replace(/[^\w -]/g, '').trim().slice(0, 4);
 }
 
 function sanitizeDesign(input, fallback) {
@@ -65,12 +71,17 @@ function sanitizeDesign(input, fallback) {
     }
     design.color = TANK_COLORS.some((c) => c.hex === d.color) ? d.color : fallback.color;
     design.treads = 'treads';
+    design.name = sanitizeName(d.name, fallback.name);
     return design;
 }
 
 function colorName(hex) {
     const c = TANK_COLORS.find((c) => c.hex === hex);
     return c ? c.name : 'Player';
+}
+
+function displayName(p) {
+    return (p.design && p.design.name) || colorName(p.design.color);
 }
 
 const SPAWNS = [
@@ -80,23 +91,55 @@ const SPAWNS = [
     { x: 80, y: ARENA_H - 80 },
 ];
 
-// Symmetric arena layout: a center cross (breaks the diagonal sightline
-// between opposite spawns) plus 4 edge pillars (break the straight
-// horizontal/vertical lanes and add flanking routes). All pieces stay
-// well clear of the 4 corner spawn points so nobody gets walled in.
+// Three symmetric arena layouts. Each is 180-degree symmetric and keeps all
+// pieces well clear of the 4 corner spawn points so nobody gets walled in.
+// One is picked at random each round (never the same twice in a row).
 const CX = ARENA_W / 2;
 const CY = ARENA_H / 2;
-const OBSTACLES = [
-    // center cross
-    { x: CX - 100, y: CY - 10, w: 200, h: 20 },
-    { x: CX - 10, y: CY - 110, w: 20, h: 80 },
-    { x: CX - 10, y: CY + 30, w: 20, h: 80 },
-    // edge pillars
-    { x: CX - 10, y: 60, w: 20, h: 80 },
-    { x: CX - 10, y: ARENA_H - 140, w: 20, h: 80 },
-    { x: 60, y: CY - 10, w: 80, h: 20 },
-    { x: ARENA_W - 140, y: CY - 10, w: 80, h: 20 },
+const MAPS = [
+    {
+        name: 'Crossroads',
+        // center cross breaks the diagonal sightline between opposite spawns,
+        // plus 4 edge pillars that break the straight lanes.
+        obstacles: [
+            { x: CX - 100, y: CY - 10, w: 200, h: 20 },
+            { x: CX - 10, y: CY - 110, w: 20, h: 80 },
+            { x: CX - 10, y: CY + 30, w: 20, h: 80 },
+            { x: CX - 10, y: 60, w: 20, h: 80 },
+            { x: CX - 10, y: ARENA_H - 140, w: 20, h: 80 },
+            { x: 60, y: CY - 10, w: 80, h: 20 },
+            { x: ARENA_W - 140, y: CY - 10, w: 80, h: 20 },
+        ],
+    },
+    {
+        name: 'Bunkers',
+        // solid center block with four offset bars for flanking cover.
+        obstacles: [
+            { x: CX - 40, y: CY - 40, w: 80, h: 80 },
+            { x: CX - 180, y: CY - 130, w: 90, h: 20 },
+            { x: CX + 90, y: CY - 130, w: 90, h: 20 },
+            { x: CX - 180, y: CY + 110, w: 90, h: 20 },
+            { x: CX + 90, y: CY + 110, w: 90, h: 20 },
+        ],
+    },
+    {
+        name: 'Bastion',
+        // broken square ring around the center with gaps on all four sides.
+        obstacles: [
+            { x: CX - 140, y: CY - 160, w: 100, h: 20 },
+            { x: CX + 40, y: CY - 160, w: 100, h: 20 },
+            { x: CX - 140, y: CY + 140, w: 100, h: 20 },
+            { x: CX + 40, y: CY + 140, w: 100, h: 20 },
+            { x: CX - 140, y: CY - 90, w: 20, h: 60 },
+            { x: CX - 140, y: CY + 30, w: 20, h: 60 },
+            { x: CX + 120, y: CY - 90, w: 20, h: 60 },
+            { x: CX + 120, y: CY + 30, w: 20, h: 60 },
+        ],
+    },
 ];
+
+let mapIndex = 0;
+let OBSTACLES = MAPS[mapIndex].obstacles;
 
 const players = {}; // id -> { x,y,angle,design,alive,kills,lastShot,dx,dy,fire,buff }
 let bullets = []; // { x,y,vx,vy,ownerId,bounces,bounceLimit,bornAt,hot }
@@ -140,7 +183,20 @@ function resetPlayerForRound(p, index) {
     p.buff = null;
 }
 
+function broadcastMap() {
+    const msg = JSON.stringify({ type: 'map', obstacles: OBSTACLES, name: MAPS[mapIndex].name });
+    wss.clients.forEach((client) => {
+        if (client.readyState === 1) client.send(msg);
+    });
+}
+
 function startRound() {
+    let idx = Math.floor(Math.random() * MAPS.length);
+    if (MAPS.length > 1 && idx === mapIndex) idx = (idx + 1) % MAPS.length;
+    mapIndex = idx;
+    OBSTACLES = MAPS[mapIndex].obstacles;
+    broadcastMap();
+
     const ids = Object.keys(players);
     ids.forEach((id, i) => resetPlayerForRound(players[id], i));
     bullets = [];
@@ -197,6 +253,7 @@ wss.on('connection', (ws) => {
         id,
         arena: { w: ARENA_W, h: ARENA_H },
         obstacles: OBSTACLES,
+        mapName: MAPS[mapIndex].name,
         palette: TANK_COLORS,
         parts: TANK_PARTS,
     }));
@@ -367,11 +424,11 @@ function tick() {
         const total = Object.keys(players).length;
         if (total >= 2 && alive.length <= 1) {
             const winner = alive[0];
-            endRound(winner ? `${colorName(winner.design.color)} wins!` : 'Draw!');
+            endRound(winner ? `${displayName(winner)} wins!` : 'Draw!');
         } else if (now >= round.endAt) {
             const maxKills = Math.max(...Object.values(players).map((p) => p.kills), 0);
             const leaders = Object.values(players).filter((p) => p.kills === maxKills && maxKills > 0);
-            endRound(leaders.length === 1 ? `${colorName(leaders[0].design.color)} wins on kills!` : "Time's up! Draw!");
+            endRound(leaders.length === 1 ? `${displayName(leaders[0])} wins on kills!` : "Time's up! Draw!");
         }
     } else if (round.state === 'ended') {
         if (now >= round.endsWaitingAt) {

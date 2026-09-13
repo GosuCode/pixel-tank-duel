@@ -5,13 +5,27 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Pixel Tank Duel</title>
 <style>
+    :root {
+        --bg: #0b0c0a;
+        --panel: #13150f;
+        --line: #2b2f22;
+        --line2: #454b33;
+        --text: #d9d6c4;
+        --muted: #8c8b76;
+        --amber: #e0a938;
+        --amber-dim: #8a6a24;
+        --olive: #7f8a52;
+        --red: #c14b32;
+        --mono: ui-monospace, 'SFMono-Regular', Menlo, Consolas, 'Liberation Mono', monospace;
+    }
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
     html, body {
         margin: 0;
         height: 100%;
-        background: #0d0f14;
-        color: #eee;
-        font-family: -apple-system, system-ui, sans-serif;
+        background: radial-gradient(120% 100% at 50% 0%, #14160f 0%, #0b0c0a 70%);
+        color: var(--text);
+        font-family: var(--mono);
+        letter-spacing: 0.04em;
         overflow: hidden;
         touch-action: none;
         user-select: none;
@@ -25,178 +39,269 @@
         align-items: center;
         justify-content: center;
     }
+    #brand {
+        position: absolute;
+        top: 13px;
+        left: 16px;
+        z-index: 6;
+        font-size: 11px;
+        letter-spacing: 0.28em;
+        text-transform: uppercase;
+        color: var(--olive);
+        pointer-events: none;
+    }
     #hud {
         position: absolute;
-        top: 10px;
+        top: 0;
         left: 0;
         right: 0;
         display: flex;
+        align-items: center;
         justify-content: center;
-        gap: 24px;
+        gap: 28px;
+        padding: 12px 16px;
+        font-size: 12px;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+        color: var(--muted);
+        border-bottom: 1px solid var(--line);
+        background: linear-gradient(180deg, rgba(11,12,10,0.92), rgba(11,12,10,0));
         pointer-events: none;
         font-variant-numeric: tabular-nums;
         z-index: 5;
     }
-    #hud span { font-size: 15px; opacity: 0.85; }
-    #timer { font-size: 20px; font-weight: 700; }
+    #hud span { display: flex; align-items: center; gap: 8px; }
+    #timer { font-size: 16px; font-weight: 700; color: var(--amber); }
+    #status { color: var(--muted); }
+    #myBuff { color: var(--amber); }
     #banner {
         position: absolute;
-        top: 42%;
+        top: 40%;
         left: 50%;
         transform: translate(-50%, -50%);
-        font-size: clamp(20px, 5vw, 36px);
-        font-weight: 800;
+        font-size: clamp(22px, 5vw, 40px);
+        font-weight: 700;
+        letter-spacing: 0.2em;
+        text-transform: uppercase;
         text-align: center;
-        text-shadow: 0 2px 8px #000;
+        white-space: pre-line;
+        color: var(--text);
+        text-shadow: 0 0 18px rgba(0,0,0,0.9), 0 2px 0 #000;
         z-index: 6;
         pointer-events: none;
     }
     canvas {
-        background: #1a1d24;
-        border: 2px solid #333;
-        border-radius: 6px;
+        background: #0f1109;
+        border: 1px solid var(--line2);
+        border-radius: 8px;
+        box-shadow: 0 0 0 1px rgba(0,0,0,0.6), 0 24px 60px rgba(0,0,0,0.6), inset 0 0 120px rgba(0,0,0,0.5);
         max-width: 100vw;
         max-height: 100vh;
         touch-action: none;
     }
     .stick {
         position: fixed;
-        bottom: 24px;
-        width: 120px;
-        height: 120px;
+        bottom: 28px;
+        width: 124px;
+        height: 124px;
         border-radius: 50%;
-        background: rgba(255,255,255,0.06);
-        border: 2px solid rgba(255,255,255,0.2);
+        background: radial-gradient(circle at 50% 50%, rgba(224,169,56,0.06), rgba(0,0,0,0.25));
+        border: 1px solid var(--line2);
         z-index: 10;
         display: none;
     }
     .stick .knob {
         position: absolute;
-        width: 50px;
-        height: 50px;
-        left: 35px;
-        top: 35px;
+        width: 52px;
+        height: 52px;
+        left: 36px;
+        top: 36px;
         border-radius: 50%;
-        background: rgba(255,255,255,0.35);
+        background: radial-gradient(circle at 40% 35%, rgba(224,169,56,0.55), rgba(224,169,56,0.18));
+        border: 1px solid rgba(224,169,56,0.7);
     }
-    #moveStick { left: 24px; }
+    #moveStick { left: 28px; }
     #fireBtn {
-        right: 24px;
+        right: 28px;
         display: none;
         position: fixed;
-        bottom: 24px;
-        width: 90px;
-        height: 90px;
+        bottom: 28px;
+        width: 94px;
+        height: 94px;
         border-radius: 50%;
-        background: rgba(255,60,60,0.25);
-        border: 2px solid rgba(255,80,80,0.5);
-        color: #fff;
+        background: radial-gradient(circle at 50% 40%, rgba(193,75,50,0.35), rgba(193,75,50,0.1));
+        border: 1px solid rgba(193,75,50,0.8);
+        color: #f3d9d1;
         font-weight: 700;
+        font-family: var(--mono);
+        letter-spacing: 0.18em;
         z-index: 10;
         align-items: center;
         justify-content: center;
-        font-size: 14px;
+        font-size: 13px;
     }
     #help {
         position: absolute;
-        bottom: 8px;
-        font-size: 12px;
-        opacity: 0.5;
+        bottom: 10px;
+        font-size: 11px;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: var(--muted);
+        opacity: 0.7;
         z-index: 5;
+    }
+    @media (max-width: 560px) {
+        #brand { display: none; }
     }
     #customizeBtn {
         position: fixed;
-        top: 10px;
-        right: 12px;
+        top: 14px;
+        right: 16px;
         z-index: 20;
-        background: rgba(255,255,255,0.08);
-        border: 1px solid rgba(255,255,255,0.2);
-        color: #eee;
+        background: transparent;
+        border: 1px solid var(--line2);
+        color: var(--text);
         border-radius: 6px;
-        padding: 6px 12px;
-        font-size: 13px;
+        padding: 7px 12px;
+        font-family: var(--mono);
+        font-size: 11px;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
         cursor: pointer;
+        transition: border-color 0.15s, color 0.15s, background 0.15s;
     }
+    #customizeBtn:hover { border-color: var(--amber); color: var(--amber); background: rgba(224,169,56,0.06); }
     #garage {
         position: fixed;
         inset: 0;
-        background: rgba(6,8,12,0.92);
+        z-index: 50;
         display: flex;
         align-items: center;
         justify-content: center;
-        z-index: 50;
         padding: 16px;
+        background: radial-gradient(120% 120% at 50% 0%, rgba(20,22,15,0.96), rgba(5,6,4,0.98));
     }
     #garage.hidden { display: none; }
     #garageCard {
-        background: #151922;
-        border: 2px solid #2c333f;
-        border-radius: 12px;
-        padding: 18px 20px 16px;
-        width: min(560px, 100%);
+        position: relative;
+        background: var(--panel);
+        border: 1px solid var(--line2);
+        border-radius: 10px;
+        padding: 22px 24px 20px;
+        width: min(600px, 100%);
         max-height: 100%;
         overflow-y: auto;
+        box-shadow: 0 30px 80px rgba(0,0,0,0.7);
     }
+    #garageCard::before, #garageCard::after {
+        content: '';
+        position: absolute;
+        width: 14px;
+        height: 14px;
+        border: 1px solid var(--amber);
+        opacity: 0.75;
+    }
+    #garageCard::before { top: -1px; left: -1px; border-right: none; border-bottom: none; }
+    #garageCard::after { bottom: -1px; right: -1px; border-left: none; border-top: none; }
     #garageCard h1 {
-        margin: 0 0 14px;
-        font-size: 18px;
-        letter-spacing: 1px;
+        margin: 0 0 4px;
+        font-size: 15px;
+        letter-spacing: 0.3em;
         text-transform: uppercase;
         text-align: center;
+        color: var(--text);
+    }
+    #garageCard .sub {
+        margin: 0 0 18px;
+        text-align: center;
+        font-size: 10px;
+        letter-spacing: 0.22em;
+        text-transform: uppercase;
+        color: var(--muted);
     }
     #garageBody {
         display: flex;
-        gap: 20px;
+        gap: 22px;
         align-items: center;
         flex-wrap: wrap;
         justify-content: center;
     }
     #preview {
-        background: #1a1d24;
-        border: 2px solid #2c333f;
+        background:
+            linear-gradient(rgba(127,138,82,0.06) 1px, transparent 1px) 0 0 / 100% 20px,
+            linear-gradient(90deg, rgba(127,138,82,0.06) 1px, transparent 1px) 0 0 / 20px 100%,
+            #0f1109;
+        border: 1px solid var(--line2);
         border-radius: 8px;
         flex: 0 0 auto;
     }
-    #garageControls { flex: 1 1 240px; min-width: 0; }
-    .garageRow { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
-    .garageLabel { width: 52px; flex: 0 0 auto; font-size: 12px; opacity: 0.6; text-transform: uppercase; }
+    #garageControls { flex: 1 1 260px; min-width: 0; }
+    .garageRow { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+    .garageLabel { width: 54px; flex: 0 0 auto; font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--muted); }
     .garageOpts { display: flex; flex-wrap: wrap; gap: 6px; }
-    .garageOpt {
-        background: #222835;
-        color: #cfd6e2;
-        border: 1px solid #333c4b;
-        border-radius: 6px;
-        padding: 6px 10px;
+    .garageName {
+        background: #0f1109;
+        border: 1px solid var(--line2);
+        border-radius: 5px;
+        color: var(--text);
+        font-family: var(--mono);
         font-size: 12px;
-        cursor: pointer;
-        text-transform: capitalize;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        padding: 7px 10px;
+        width: 120px;
+        outline: none;
     }
-    .garageOpt.selected { background: #2e7dff; border-color: #2e7dff; color: #fff; }
+    .garageName:focus { border-color: var(--amber); }
+    .garageName::placeholder { color: var(--muted); opacity: 0.6; }
+    .garageOpt {
+        background: transparent;
+        color: var(--text);
+        border: 1px solid var(--line2);
+        border-radius: 5px;
+        padding: 7px 11px;
+        font-family: var(--mono);
+        font-size: 11px;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        cursor: pointer;
+        transition: all 0.12s;
+    }
+    .garageOpt:hover { border-color: var(--amber-dim); }
+    .garageOpt.selected { background: var(--amber); border-color: var(--amber); color: #141509; font-weight: 700; }
     .garageSwatch {
-        width: 26px;
-        height: 26px;
-        border-radius: 6px;
-        border: 2px solid transparent;
+        width: 28px;
+        height: 28px;
+        border-radius: 5px;
+        border: 1px solid rgba(0,0,0,0.5);
+        box-shadow: 0 0 0 1px var(--line2);
         cursor: pointer;
         padding: 0;
+        transition: box-shadow 0.12s, transform 0.12s;
     }
-    .garageSwatch.selected { border-color: #fff; }
+    .garageSwatch:hover { transform: translateY(-1px); }
+    .garageSwatch.selected { box-shadow: 0 0 0 2px var(--amber); }
     #garageDone {
         display: block;
-        margin: 16px auto 0;
-        background: #2e7dff;
-        color: #fff;
+        margin: 20px auto 0;
+        background: var(--amber);
+        color: #141509;
         border: none;
-        border-radius: 8px;
-        padding: 10px 34px;
-        font-size: 15px;
+        border-radius: 6px;
+        padding: 11px 40px;
+        font-family: var(--mono);
+        font-size: 12px;
         font-weight: 700;
+        letter-spacing: 0.24em;
+        text-transform: uppercase;
         cursor: pointer;
     }
+    #garageDone:hover { filter: brightness(1.08); }
 </style>
 </head>
 <body>
 <div id="wrap">
+    <div id="brand">Pixel Tank Duel</div>
     <div id="hud">
         <span id="timer">--</span>
         <span id="status"></span>
@@ -207,16 +312,17 @@
     <div id="help">Move: WASD / Arrows &nbsp;•&nbsp; Fire: Space</div>
 </div>
 <div id="moveStick" class="stick"><div class="knob"></div></div>
-<div id="fireBtn">FIRE</div>
-<button id="customizeBtn">Customize (G)</button>
+<div id="fireBtn">Fire</div>
+<button id="customizeBtn">Armory (G)</button>
 <div id="garage">
     <div id="garageCard">
-        <h1>Customize Your Tank</h1>
+        <h1>Armory</h1>
+        <p class="sub">Tank Configuration</p>
         <div id="garageBody">
             <canvas id="preview" width="180" height="180"></canvas>
             <div id="garageControls"></div>
         </div>
-        <button id="garageDone">Ready</button>
+        <button id="garageDone">Deploy</button>
     </div>
 </div>
 
@@ -236,6 +342,7 @@ let players = {};
 let bullets = [];
 let obstacles = [];
 let powerup = null;
+let mapName = '';
 let arena = { w: 800, h: 600 };
 let roundInfo = { state: 'waiting', timeLeft: 0, winnerText: '' };
 
@@ -248,7 +355,8 @@ const POWERUP_META = {
 };
 
 // ---- Tank design (cosmetic) ----
-const DEFAULT_DESIGN = { hull: 'classic', turret: 'square', barrel: 'medium', treads: 'treads', color: '#FF4136' };
+const DEFAULT_DESIGN = { name: '', hull: 'classic', turret: 'square', barrel: 'medium', treads: 'treads', color: '#FF4136' };
+const sanitizeName = (v) => String(v || '').replace(/[^\w -]/g, '').slice(0, 4);
 const BARREL_LEN = { short: 10, medium: 18, long: 26 };
 const PART_LABELS = { hull: 'Hull', turret: 'Turret', barrel: 'Barrel' };
 
@@ -260,6 +368,7 @@ try {
     if (saved && typeof saved === 'object') Object.assign(design, saved);
 } catch {}
 design.treads = 'treads';
+design.name = sanitizeName(design.name);
 
 const garageEl = document.getElementById('garage');
 const previewCtx = document.getElementById('preview').getContext('2d');
@@ -386,6 +495,28 @@ function drawPreview() {
 
 function buildGarage() {
     garageControls.innerHTML = '';
+
+    const nameRow = document.createElement('div');
+    nameRow.className = 'garageRow';
+    const nameLabel = document.createElement('span');
+    nameLabel.className = 'garageLabel';
+    nameLabel.textContent = 'Name';
+    nameRow.appendChild(nameLabel);
+    const nameInput = document.createElement('input');
+    nameInput.className = 'garageName';
+    nameInput.maxLength = 4;
+    nameInput.value = design.name || '';
+    nameInput.placeholder = '4 CHARS';
+    nameInput.autocomplete = 'off';
+    nameInput.spellcheck = false;
+    nameInput.oninput = () => {
+        design.name = sanitizeName(nameInput.value);
+        if (nameInput.value !== design.name) nameInput.value = design.name;
+        sendDesign();
+    };
+    nameRow.appendChild(nameInput);
+    garageControls.appendChild(nameRow);
+
     for (const key of Object.keys(PART_LABELS)) {
         const row = document.createElement('div');
         row.className = 'garageRow';
@@ -501,15 +632,15 @@ if (isTouch) {
         const len = Math.hypot(dx, dy);
         if (len > 1) { dx /= len; dy /= len; }
         stickDx = dx; stickDy = dy;
-        knob.style.left = `${35 + dx * 35}px`;
-        knob.style.top = `${35 + dy * 35}px`;
+        knob.style.left = `${36 + dx * 36}px`;
+        knob.style.top = `${36 + dy * 36}px`;
     }
     function resetStick() {
         stickActive = false;
         stickTouchId = null;
         stickDx = 0; stickDy = 0;
-        knob.style.left = '35px';
-        knob.style.top = '35px';
+        knob.style.left = '36px';
+        knob.style.top = '36px';
     }
 
     fireBtn.addEventListener('touchstart', (e) => { e.preventDefault(); touchFire = true; });
@@ -524,12 +655,16 @@ ws.onmessage = (event) => {
         myId = data.id;
         arena = data.arena;
         obstacles = data.obstacles;
+        mapName = data.mapName || '';
         canvas.width = arena.w;
         canvas.height = arena.h;
         applyCatalog(data);
         sendDesign();
     } else if (data.type === 'full') {
         bannerEl.textContent = 'Game is full (4/4 players)';
+    } else if (data.type === 'map') {
+        obstacles = data.obstacles;
+        mapName = data.name || mapName;
     } else if (data.type === 'state') {
         players = data.players;
         bullets = data.bullets;
@@ -555,10 +690,27 @@ setInterval(() => {
 function draw() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    ctx.fillStyle = '#2a2f3a';
+    ctx.strokeStyle = 'rgba(127,138,82,0.07)';
+    ctx.lineWidth = 1;
+    const grid = 40;
+    ctx.beginPath();
+    for (let x = grid; x < canvas.width; x += grid) {
+        ctx.moveTo(x + 0.5, 0);
+        ctx.lineTo(x + 0.5, canvas.height);
+    }
+    for (let y = grid; y < canvas.height; y += grid) {
+        ctx.moveTo(0, y + 0.5);
+        ctx.lineTo(canvas.width, y + 0.5);
+    }
+    ctx.stroke();
+
     for (const o of obstacles) {
         roundRect(ctx, o.x, o.y, o.w, o.h, Math.min(4, o.w / 2, o.h / 2));
+        ctx.fillStyle = '#242819';
         ctx.fill();
+        ctx.strokeStyle = '#3b4129';
+        ctx.lineWidth = 1;
+        ctx.stroke();
     }
 
     if (powerup) {
@@ -608,21 +760,28 @@ function draw() {
         drawTank(ctx, p.design || DEFAULT_DESIGN, id === myId);
         ctx.restore();
 
-        ctx.fillStyle = '#fff';
-        ctx.font = '11px sans-serif';
+        const label = (p.design && p.design.name) || '';
         ctx.textAlign = 'center';
-        ctx.fillText(`★${p.kills}`, p.x, p.y - 22);
+        if (label) {
+            ctx.fillStyle = p.design.color;
+            ctx.font = 'bold 11px ui-monospace, monospace';
+            ctx.fillText(label, p.x, p.y - 24);
+        }
+        const starY = label ? p.y - 36 : p.y - 24;
+        ctx.fillStyle = '#e0a938';
+        ctx.font = '11px ui-monospace, monospace';
+        ctx.fillText(`★${p.kills}`, p.x, starY);
 
         if (p.buff) {
             const meta = POWERUP_META[p.buff.type];
             ctx.beginPath();
-            ctx.arc(p.x, p.y - 34, 8, 0, Math.PI * 2);
+            ctx.arc(p.x, starY - 12, 8, 0, Math.PI * 2);
             ctx.fillStyle = meta.color;
             ctx.fill();
             ctx.fillStyle = '#111';
             ctx.font = 'bold 9px sans-serif';
             ctx.textBaseline = 'middle';
-            ctx.fillText(meta.label, p.x, p.y - 33);
+            ctx.fillText(meta.label, p.x, starY - 11);
             ctx.textBaseline = 'alphabetic';
         }
     }
@@ -647,7 +806,7 @@ setInterval(() => {
 
     if (roundInfo.state === 'active') {
         timerEl.textContent = Math.ceil(roundInfo.timeLeft / 1000) + 's';
-        statusEl.textContent = `${alive}/${total} alive`;
+        statusEl.textContent = mapName ? `${mapName} · ${alive}/${total} alive` : `${alive}/${total} alive`;
         bannerEl.textContent = '';
     } else if (roundInfo.state === 'ended') {
         timerEl.textContent = '';

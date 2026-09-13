@@ -14,13 +14,14 @@ A top-down 2D local multiplayer tank shooter for 2-4 players. One device hosts t
 - Fire: Spacebar (desktop) or the FIRE button (touch)
 - Customize tank: Customize button or G key
 - Bullets are destroyed when they hit a wall/obstacle — they do not bounce unless you have the Ricochet power-up (see below)
+- Three arena maps (Crossroads, Bunkers, Bastion) — one is picked at random each round, never twice in a row
 - Last tank standing wins the round; if the 60s timer runs out, most kills wins
 - Rounds auto-restart a few seconds after ending
 - Max 4 players per game
 
 ## Customize your tank
 
-Before a match (and any time mid-game), open the garage with the **Customize** button or the **G** key. Pick a hull, turret, barrel length, tread style and color, then hit **Ready**. Your design is saved in the browser and shared with everyone in the match over WebSockets. Parts are purely cosmetic — they don't change speed, hitbox or damage.
+Before a match (and any time mid-game), open the **Armory** with the button or the **G** key. Set a callsign (up to 4 characters), then pick a hull, turret, barrel length and color, and hit **Deploy**. Your callsign shows above your tank and your design is saved in the browser and shared with everyone in the match over WebSockets. Parts are purely cosmetic — they don't change speed, hitbox or damage.
 
 ## Power-ups
 
