@@ -21,7 +21,7 @@ const RESTART_DELAY = 4000;
 const MAX_PLAYERS = 4;
 const TICK_MS = 1000 / 60;
 
-const POWERUP_TYPES = ['speed', 'rapid', 'triple', 'ricochet'];
+const POWERUP_TYPES = ['speed', 'rapid', 'triple', 'ricochet', 'shield'];
 const POWERUP_R = 14;
 const POWERUP_DURATION = 8000;
 const POWERUP_RESPAWN = 12000;
@@ -295,8 +295,12 @@ function tick() {
                 const dx = target.x - b.x;
                 const dy = target.y - b.y;
                 if (dx * dx + dy * dy < (TANK_R + BULLET_R) * (TANK_R + BULLET_R)) {
-                    target.alive = false;
-                    if (players[b.ownerId] && b.ownerId !== id) players[b.ownerId].kills++;
+                    if (target.buff && target.buff.type === 'shield') {
+                        target.buff = null; // shield absorbs the hit and shatters
+                    } else {
+                        target.alive = false;
+                        if (players[b.ownerId] && b.ownerId !== id) players[b.ownerId].kills++;
+                    }
                     return false;
                 }
             }

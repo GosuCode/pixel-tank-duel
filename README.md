@@ -27,6 +27,7 @@ A pickup randomly spawns on the arena (one at a time, respawns ~12s after being 
 | Rapid Fire | F (orange) | Fire cooldown cut way down |
 | Triple Shot | T (purple) | Fires a 3-bullet spread instead of 1 |
 | Ricochet | R (yellow) | Bullets survive 3 wall bounces instead of 1 — rendered as bigger gold bullets |
+| Energy Shield | B (blue) | Absorbs the next bullet hit (including ricochets/spread shots), then shatters |
 
 Your active buff shows as a badge above your tank and a countdown chip in the HUD.
 

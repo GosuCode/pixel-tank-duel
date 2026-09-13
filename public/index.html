@@ -144,6 +144,7 @@ const POWERUP_META = {
     rapid: { color: '#ff9100', label: 'F', name: 'RAPID FIRE' },
     triple: { color: '#b388ff', label: 'T', name: 'TRIPLE SHOT' },
     ricochet: { color: '#ffd600', label: 'R', name: 'RICOCHET' },
+    shield: { color: '#2979ff', label: 'B', name: 'SHIELD' },
 };
 
 // ---- Input state ----
@@ -279,6 +280,20 @@ function draw() {
     for (const id in players) {
         const p = players[id];
         if (!p.alive) continue;
+
+        if (p.buff && p.buff.type === 'shield') {
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, 22, 0, Math.PI * 2);
+            ctx.strokeStyle = '#2979ff';
+            ctx.lineWidth = 2;
+            ctx.globalAlpha = 0.7;
+            ctx.stroke();
+            ctx.fillStyle = '#2979ff';
+            ctx.globalAlpha = 0.12;
+            ctx.fill();
+            ctx.globalAlpha = 1;
+        }
+
         ctx.save();
         ctx.translate(p.x, p.y);
         ctx.rotate(p.angle);
