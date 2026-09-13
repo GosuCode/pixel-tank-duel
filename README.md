@@ -12,10 +12,15 @@ A top-down 2D local multiplayer tank shooter for 2-4 players. One device hosts t
 
 - Move: WASD / Arrow keys (desktop) or the on-screen joystick (touch)
 - Fire: Spacebar (desktop) or the FIRE button (touch)
-- Bullets bounce off walls/obstacles once before being destroyed on the second hit (more with the Ricochet power-up — see below)
+- Customize tank: Customize button or G key
+- Bullets are destroyed when they hit a wall/obstacle — they do not bounce unless you have the Ricochet power-up (see below)
 - Last tank standing wins the round; if the 60s timer runs out, most kills wins
 - Rounds auto-restart a few seconds after ending
 - Max 4 players per game
+
+## Customize your tank
+
+Before a match (and any time mid-game), open the garage with the **Customize** button or the **G** key. Pick a hull, turret, barrel length, tread style and color, then hit **Ready**. Your design is saved in the browser and shared with everyone in the match over WebSockets. Parts are purely cosmetic — they don't change speed, hitbox or damage.
 
 ## Power-ups
 
@@ -26,7 +31,7 @@ A pickup randomly spawns on the arena (one at a time, respawns ~12s after being 
 | Speed Boost | S (cyan) | Move speed up ~70% |
 | Rapid Fire | F (orange) | Fire cooldown cut way down |
 | Triple Shot | T (purple) | Fires a 3-bullet spread instead of 1 |
-| Ricochet | R (yellow) | Bullets survive 3 wall bounces instead of 1 — rendered as bigger gold bullets |
+| Ricochet | R (yellow) | Bullets survive 3 wall bounces instead of being destroyed on impact — rendered as bigger gold bullets |
 | Energy Shield | B (blue) | Absorbs the next bullet hit (including ricochets/spread shots), then shatters |
 
 Your active buff shows as a badge above your tank and a countdown chip in the HUD.

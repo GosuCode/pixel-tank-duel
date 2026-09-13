@@ -104,6 +104,95 @@
         opacity: 0.5;
         z-index: 5;
     }
+    #customizeBtn {
+        position: fixed;
+        top: 10px;
+        right: 12px;
+        z-index: 20;
+        background: rgba(255,255,255,0.08);
+        border: 1px solid rgba(255,255,255,0.2);
+        color: #eee;
+        border-radius: 6px;
+        padding: 6px 12px;
+        font-size: 13px;
+        cursor: pointer;
+    }
+    #garage {
+        position: fixed;
+        inset: 0;
+        background: rgba(6,8,12,0.92);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 50;
+        padding: 16px;
+    }
+    #garage.hidden { display: none; }
+    #garageCard {
+        background: #151922;
+        border: 2px solid #2c333f;
+        border-radius: 12px;
+        padding: 18px 20px 16px;
+        width: min(560px, 100%);
+        max-height: 100%;
+        overflow-y: auto;
+    }
+    #garageCard h1 {
+        margin: 0 0 14px;
+        font-size: 18px;
+        letter-spacing: 1px;
+        text-transform: uppercase;
+        text-align: center;
+    }
+    #garageBody {
+        display: flex;
+        gap: 20px;
+        align-items: center;
+        flex-wrap: wrap;
+        justify-content: center;
+    }
+    #preview {
+        background: #1a1d24;
+        border: 2px solid #2c333f;
+        border-radius: 8px;
+        flex: 0 0 auto;
+    }
+    #garageControls { flex: 1 1 240px; min-width: 0; }
+    .garageRow { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+    .garageLabel { width: 52px; flex: 0 0 auto; font-size: 12px; opacity: 0.6; text-transform: uppercase; }
+    .garageOpts { display: flex; flex-wrap: wrap; gap: 6px; }
+    .garageOpt {
+        background: #222835;
+        color: #cfd6e2;
+        border: 1px solid #333c4b;
+        border-radius: 6px;
+        padding: 6px 10px;
+        font-size: 12px;
+        cursor: pointer;
+        text-transform: capitalize;
+    }
+    .garageOpt.selected { background: #2e7dff; border-color: #2e7dff; color: #fff; }
+    .garageSwatch {
+        width: 26px;
+        height: 26px;
+        border-radius: 6px;
+        border: 2px solid transparent;
+        cursor: pointer;
+        padding: 0;
+    }
+    .garageSwatch.selected { border-color: #fff; }
+    #garageDone {
+        display: block;
+        margin: 16px auto 0;
+        background: #2e7dff;
+        color: #fff;
+        border: none;
+        border-radius: 8px;
+        padding: 10px 34px;
+        font-size: 15px;
+        font-weight: 700;
+        cursor: pointer;
+    }
 </style>
 </head>
 <body>
@@ -119,6 +208,17 @@
 </div>
 <div id="moveStick" class="stick"><div class="knob"></div></div>
 <div id="fireBtn">FIRE</div>
+<button id="customizeBtn">Customize (G)</button>
+<div id="garage">
+    <div id="garageCard">
+        <h1>Customize Your Tank</h1>
+        <div id="garageBody">
+            <canvas id="preview" width="180" height="180"></canvas>
+            <div id="garageControls"></div>
+        </div>
+        <button id="garageDone">Ready</button>
+    </div>
+</div>
 
 <script>
 const canvas = document.getElementById('gameCanvas');
@@ -146,6 +246,205 @@ const POWERUP_META = {
     ricochet: { color: '#ffd600', label: 'R', name: 'RICOCHET' },
     shield: { color: '#2979ff', label: 'B', name: 'SHIELD' },
 };
+
+// ---- Tank design (cosmetic) ----
+const DEFAULT_DESIGN = { hull: 'classic', turret: 'square', barrel: 'medium', treads: 'treads', color: '#FF4136' };
+const BARREL_LEN = { short: 10, medium: 18, long: 26 };
+const PART_LABELS = { hull: 'Hull', turret: 'Turret', barrel: 'Barrel' };
+
+let palette = [];
+let parts = {};
+let design = { ...DEFAULT_DESIGN };
+try {
+    const saved = JSON.parse(localStorage.getItem('tankDesign') || 'null');
+    if (saved && typeof saved === 'object') Object.assign(design, saved);
+} catch {}
+design.treads = 'treads';
+
+const garageEl = document.getElementById('garage');
+const previewCtx = document.getElementById('preview').getContext('2d');
+const garageControls = document.getElementById('garageControls');
+
+function shade(hex, factor) {
+    const n = parseInt(hex.slice(1), 16);
+    const r = Math.round(((n >> 16) & 255) * factor);
+    const g = Math.round(((n >> 8) & 255) * factor);
+    const b = Math.round((n & 255) * factor);
+    return `rgb(${r},${g},${b})`;
+}
+
+function roundRect(g, x, y, w, h, r) {
+    g.beginPath();
+    g.moveTo(x + r, y);
+    g.arcTo(x + w, y, x + w, y + h, r);
+    g.arcTo(x + w, y + h, x, y + h, r);
+    g.arcTo(x, y + h, x, y, r);
+    g.arcTo(x, y, x + w, y, r);
+    g.closePath();
+}
+
+function hullPath(g, shape) {
+    if (shape === 'wedge') {
+        g.beginPath();
+        g.moveTo(-14, -11);
+        g.lineTo(8, -11);
+        g.lineTo(14, 0);
+        g.lineTo(8, 11);
+        g.lineTo(-14, 11);
+        g.closePath();
+    } else if (shape === 'round') {
+        roundRect(g, -14, -11, 28, 22, 8);
+    } else {
+        roundRect(g, -14, -11, 28, 22, 4);
+    }
+}
+
+function drawTank(g, d, highlight) {
+    const body = d.color;
+    const dark = shade(body, 0.6);
+    const mid = shade(body, 0.82);
+
+    if (d.treads === 'treads') {
+        for (const ty of [-15, 9]) {
+            roundRect(g, -15, ty, 30, 6, 2.5);
+            g.fillStyle = '#454d5c';
+            g.fill();
+            g.fillStyle = '#20242c';
+            for (const tx of [-11, -6, -1, 4, 9]) g.fillRect(tx, ty + 1.5, 2, 3);
+        }
+    } else if (d.treads === 'wheels') {
+        g.fillStyle = '#454d5c';
+        for (const wx of [-10, 0, 10]) {
+            g.beginPath(); g.arc(wx, -12.5, 3.5, 0, Math.PI * 2); g.fill();
+            g.beginPath(); g.arc(wx, 12.5, 3.5, 0, Math.PI * 2); g.fill();
+        }
+        g.fillStyle = '#20242c';
+        for (const wx of [-10, 0, 10]) {
+            g.beginPath(); g.arc(wx, -12.5, 1.5, 0, Math.PI * 2); g.fill();
+            g.beginPath(); g.arc(wx, 12.5, 1.5, 0, Math.PI * 2); g.fill();
+        }
+    }
+
+    g.save();
+    hullPath(g, d.hull);
+    if (d.hull === 'wedge') {
+        g.strokeStyle = body;
+        g.lineJoin = 'round';
+        g.lineWidth = 4;
+        g.stroke();
+    }
+    g.fillStyle = body;
+    g.fill();
+    hullPath(g, d.hull);
+    g.clip();
+    g.fillStyle = mid;
+    g.fillRect(-15, -14, 30, 7);
+    g.restore();
+
+    g.fillStyle = dark;
+    if (d.turret === 'round') {
+        g.beginPath(); g.arc(1, 0, 8, 0, Math.PI * 2); g.fill();
+    } else if (d.turret === 'dome') {
+        g.beginPath(); g.arc(1, 0, 9, 0, Math.PI * 2); g.fill();
+        g.fillStyle = mid;
+        g.beginPath(); g.arc(1, 0, 5, 0, Math.PI * 2); g.fill();
+    } else {
+        roundRect(g, -5, -8, 14, 16, 3);
+        g.fill();
+    }
+
+    const bl = BARREL_LEN[d.barrel] || BARREL_LEN.medium;
+    g.fillStyle = dark;
+    roundRect(g, 5, -3, bl, 6, 3);
+    g.fill();
+    g.fillStyle = mid;
+    roundRect(g, 5, -3, bl, 2, 1);
+    g.fill();
+    g.fillStyle = '#111';
+    roundRect(g, 5 + bl - 3, -4, 3, 8, 1.5);
+    g.fill();
+
+    if (highlight) {
+        g.strokeStyle = '#fff';
+        g.lineWidth = 2;
+        g.lineJoin = 'round';
+        hullPath(g, d.hull);
+        g.stroke();
+    }
+}
+
+function drawPreview() {
+    const w = previewCtx.canvas.width;
+    const h = previewCtx.canvas.height;
+    previewCtx.clearRect(0, 0, w, h);
+    previewCtx.save();
+    previewCtx.translate(w / 2, h / 2);
+    previewCtx.scale(2.6, 2.6);
+    drawTank(previewCtx, design, false);
+    previewCtx.restore();
+}
+
+function buildGarage() {
+    garageControls.innerHTML = '';
+    for (const key of Object.keys(PART_LABELS)) {
+        const row = document.createElement('div');
+        row.className = 'garageRow';
+        const label = document.createElement('span');
+        label.className = 'garageLabel';
+        label.textContent = PART_LABELS[key];
+        row.appendChild(label);
+        const opts = document.createElement('div');
+        opts.className = 'garageOpts';
+        for (const opt of parts[key] || []) {
+            const btn = document.createElement('button');
+            btn.className = 'garageOpt' + (design[key] === opt ? ' selected' : '');
+            btn.textContent = opt;
+            btn.onclick = () => { design[key] = opt; buildGarage(); sendDesign(); };
+            opts.appendChild(btn);
+        }
+        row.appendChild(opts);
+        garageControls.appendChild(row);
+    }
+
+    const row = document.createElement('div');
+    row.className = 'garageRow';
+    const label = document.createElement('span');
+    label.className = 'garageLabel';
+    label.textContent = 'Color';
+    row.appendChild(label);
+    const opts = document.createElement('div');
+    opts.className = 'garageOpts';
+    for (const c of palette) {
+        const btn = document.createElement('button');
+        btn.className = 'garageSwatch' + (design.color === c.hex ? ' selected' : '');
+        btn.style.background = c.hex;
+        btn.title = c.name;
+        btn.onclick = () => { design.color = c.hex; buildGarage(); sendDesign(); };
+        opts.appendChild(btn);
+    }
+    row.appendChild(opts);
+    garageControls.appendChild(row);
+    drawPreview();
+}
+
+function applyCatalog(data) {
+    palette = Array.isArray(data.palette) ? data.palette : [];
+    parts = data.parts && typeof data.parts === 'object' ? data.parts : {};
+    for (const key of Object.keys(PART_LABELS)) {
+        if (!Array.isArray(parts[key]) || !parts[key].includes(design[key])) design[key] = DEFAULT_DESIGN[key];
+    }
+    if (!palette.some((c) => c.hex === design.color)) design.color = DEFAULT_DESIGN.color;
+    buildGarage();
+}
+
+function sendDesign() {
+    localStorage.setItem('tankDesign', JSON.stringify(design));
+    if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'design', design }));
+}
+
+document.getElementById('garageDone').onclick = () => garageEl.classList.add('hidden');
+document.getElementById('customizeBtn').onclick = () => { garageEl.classList.remove('hidden'); drawPreview(); };
+window.addEventListener('keydown', (e) => { if (e.key.toLowerCase() === 'g') { garageEl.classList.remove('hidden'); drawPreview(); } });
 
 // ---- Input state ----
 const keys = {};
@@ -227,6 +526,8 @@ ws.onmessage = (event) => {
         obstacles = data.obstacles;
         canvas.width = arena.w;
         canvas.height = arena.h;
+        applyCatalog(data);
+        sendDesign();
     } else if (data.type === 'full') {
         bannerEl.textContent = 'Game is full (4/4 players)';
     } else if (data.type === 'state') {
@@ -239,6 +540,10 @@ ws.onmessage = (event) => {
 
 setInterval(() => {
     if (ws.readyState !== WebSocket.OPEN) return;
+    if (!garageEl.classList.contains('hidden')) {
+        ws.send(JSON.stringify({ type: 'input', dx: 0, dy: 0, fire: false }));
+        return;
+    }
     const kb = computeKeyboardVector();
     const dx = kb.dx !== 0 ? kb.dx : stickDx;
     const dy = kb.dy !== 0 ? kb.dy : stickDy;
@@ -251,7 +556,10 @@ function draw() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
     ctx.fillStyle = '#2a2f3a';
-    for (const o of obstacles) ctx.fillRect(o.x, o.y, o.w, o.h);
+    for (const o of obstacles) {
+        roundRect(ctx, o.x, o.y, o.w, o.h, Math.min(4, o.w / 2, o.h / 2));
+        ctx.fill();
+    }
 
     if (powerup) {
         const meta = POWERUP_META[powerup.type];
@@ -297,17 +605,7 @@ function draw() {
         ctx.save();
         ctx.translate(p.x, p.y);
         ctx.rotate(p.angle);
-
-        ctx.fillStyle = p.color;
-        ctx.fillRect(-14, -11, 28, 22);
-        ctx.fillStyle = '#111';
-        ctx.fillRect(6, -3, 16, 6);
-
-        if (id === myId) {
-            ctx.strokeStyle = '#fff';
-            ctx.lineWidth = 2;
-            ctx.strokeRect(-14, -11, 28, 22);
-        }
+        drawTank(ctx, p.design || DEFAULT_DESIGN, id === myId);
         ctx.restore();
 
         ctx.fillStyle = '#fff';

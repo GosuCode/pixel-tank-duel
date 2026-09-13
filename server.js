@@ -14,7 +14,7 @@ const ARENA_H = 600;
 const TANK_R = 16;
 const BULLET_R = 4;
 const BULLET_SPEED = 7;
-const TANK_SPEED = 3;
+const TANK_SPEED = 2.2;
 const FIRE_COOLDOWN = 350;
 const ROUND_TIME = 60000;
 const RESTART_DELAY = 4000;
@@ -30,7 +30,49 @@ const RAPID_COOLDOWN = 120;
 const TRIPLE_SPREAD = 0.26; // radians, ~15 degrees
 const RICOCHET_BOUNCES = 3;
 
-const COLORS = ['#FF4136', '#0074D9', '#2ECC40', '#FFDC00'];
+const TANK_COLORS = [
+    { id: 'red', hex: '#FF4136', name: 'Red' },
+    { id: 'blue', hex: '#0074D9', name: 'Blue' },
+    { id: 'green', hex: '#2ECC40', name: 'Green' },
+    { id: 'yellow', hex: '#FFDC00', name: 'Yellow' },
+    { id: 'orange', hex: '#FF851B', name: 'Orange' },
+    { id: 'purple', hex: '#B10DC9', name: 'Purple' },
+    { id: 'cyan', hex: '#7FDBFF', name: 'Cyan' },
+    { id: 'pink', hex: '#F012BE', name: 'Pink' },
+];
+
+const TANK_PARTS = {
+    hull: ['classic', 'wedge', 'round'],
+    turret: ['square', 'round', 'dome'],
+    barrel: ['short', 'medium', 'long'],
+};
+
+function defaultDesign(index, colorHex) {
+    return {
+        hull: 'classic',
+        turret: 'square',
+        barrel: 'medium',
+        treads: 'treads',
+        color: colorHex || TANK_COLORS[index % TANK_COLORS.length].hex,
+    };
+}
+
+function sanitizeDesign(input, fallback) {
+    const d = input && typeof input === 'object' ? input : {};
+    const design = {};
+    for (const key of Object.keys(TANK_PARTS)) {
+        design[key] = TANK_PARTS[key].includes(d[key]) ? d[key] : fallback[key];
+    }
+    design.color = TANK_COLORS.some((c) => c.hex === d.color) ? d.color : fallback.color;
+    design.treads = 'treads';
+    return design;
+}
+
+function colorName(hex) {
+    const c = TANK_COLORS.find((c) => c.hex === hex);
+    return c ? c.name : 'Player';
+}
+
 const SPAWNS = [
     { x: 80, y: 80 },
     { x: ARENA_W - 80, y: ARENA_H - 80 },
@@ -56,7 +98,7 @@ const OBSTACLES = [
     { x: ARENA_W - 140, y: CY - 10, w: 80, h: 20 },
 ];
 
-const players = {}; // id -> { x,y,angle,color,alive,kills,lastShot,dx,dy,fire,buff }
+const players = {}; // id -> { x,y,angle,design,alive,kills,lastShot,dx,dy,fire,buff }
 let bullets = []; // { x,y,vx,vy,ownerId,bounces,bounceLimit,bornAt,hot }
 
 let round = { state: 'waiting', endAt: 0, winnerText: '' };
@@ -132,11 +174,15 @@ wss.on('connection', (ws) => {
     const index = Object.keys(players).length;
     const spawn = nextSpawn(index);
 
+    const usedColors = new Set(Object.values(players).map((p) => p.design.color));
+    const freeColor = TANK_COLORS.find((c) => !usedColors.has(c.hex));
+    const design = defaultDesign(index, freeColor && freeColor.hex);
+
     players[id] = {
         x: spawn.x,
         y: spawn.y,
         angle: 0,
-        color: COLORS[index % COLORS.length],
+        design,
         alive: true,
         kills: 0,
         lastShot: 0,
@@ -146,7 +192,14 @@ wss.on('connection', (ws) => {
         buff: null,
     };
 
-    ws.send(JSON.stringify({ type: 'init', id, arena: { w: ARENA_W, h: ARENA_H }, obstacles: OBSTACLES }));
+    ws.send(JSON.stringify({
+        type: 'init',
+        id,
+        arena: { w: ARENA_W, h: ARENA_H },
+        obstacles: OBSTACLES,
+        palette: TANK_COLORS,
+        parts: TANK_PARTS,
+    }));
 
     maybeStartRound();
 
@@ -163,6 +216,8 @@ wss.on('connection', (ws) => {
             p.dx = typeof data.dx === 'number' ? Math.max(-1, Math.min(1, data.dx)) : 0;
             p.dy = typeof data.dy === 'number' ? Math.max(-1, Math.min(1, data.dy)) : 0;
             p.fire = !!data.fire;
+        } else if (data.type === 'design') {
+            p.design = sanitizeDesign(data.design, p.design);
         }
     });
 
@@ -228,7 +283,7 @@ function tick() {
         if (p.fire && round.state === 'active' && now - p.lastShot > cooldown) {
             p.lastShot = now;
             const angles = buffType === 'triple' ? [p.angle - TRIPLE_SPREAD, p.angle, p.angle + TRIPLE_SPREAD] : [p.angle];
-            const bounceLimit = buffType === 'ricochet' ? RICOCHET_BOUNCES : 1;
+            const bounceLimit = buffType === 'ricochet' ? RICOCHET_BOUNCES : 0;
             for (const angle of angles) {
                 const bx = p.x + Math.cos(angle) * (TANK_R + BULLET_R + 2);
                 const by = p.y + Math.sin(angle) * (TANK_R + BULLET_R + 2);
@@ -312,11 +367,11 @@ function tick() {
         const total = Object.keys(players).length;
         if (total >= 2 && alive.length <= 1) {
             const winner = alive[0];
-            endRound(winner ? `${winner.color} wins!` : 'Draw!');
+            endRound(winner ? `${colorName(winner.design.color)} wins!` : 'Draw!');
         } else if (now >= round.endAt) {
             const maxKills = Math.max(...Object.values(players).map((p) => p.kills), 0);
             const leaders = Object.values(players).filter((p) => p.kills === maxKills && maxKills > 0);
-            endRound(leaders.length === 1 ? `${leaders[0].color} wins on kills!` : "Time's up! Draw!");
+            endRound(leaders.length === 1 ? `${colorName(leaders[0].design.color)} wins on kills!` : "Time's up! Draw!");
         }
     } else if (round.state === 'ended') {
         if (now >= round.endsWaitingAt) {
@@ -332,7 +387,7 @@ function tick() {
             x: p.x,
             y: p.y,
             angle: p.angle,
-            color: p.color,
+            design: p.design,
             alive: p.alive,
             kills: p.kills,
             buff: p.buff ? { type: p.buff.type, timeLeft: Math.max(0, p.buff.expiresAt - now) } : null,
