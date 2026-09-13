@@ -68,25 +68,72 @@ If you want it reachable outside your LAN, deploy `server.js` to any host that r
 - Fly.io
 - Any VPS (DigitalOcean, Linode, etc.) running `npm start` behind a process manager (pm2, systemd)
 
-The app has no other infra requirements — no database, no build step. Just `npm install && npm start` on port 3000 (or whatever `PORT` env var the host provides — see note below).
+The app has no other infra requirements — no database, no build step. Just `npm install && npm start`.
 
-### Note on PORT
+### Configuration
 
-`server.js` currently listens on a hardcoded port 3000. Most non-LAN hosts assign their own port via `process.env.PORT`. If you deploy off-LAN, change the last line of `server.js` from:
+| Env var | Default | Purpose |
+| --- | --- | --- |
+| `PORT` | `3000` | TCP port to listen on |
+| `HOST` | `0.0.0.0` | Bind address (all interfaces) |
 
-```js
-server.listen(3000, '0.0.0.0', ...)
+```bash
+PORT=8080 HOST=127.0.0.1 npm start
 ```
 
-to:
+## Reaching it from outside the LAN
 
-```js
-server.listen(process.env.PORT || 3000, '0.0.0.0', ...)
+Home networks sit behind NAT, so the LAN URL only works on the same Wi-Fi. Two good options:
+
+### Tailscale (recommended)
+
+No port-forwarding, encrypted WireGuard overlay, works under CGNAT.
+
+1. Host and friend both install [Tailscale](https://tailscale.com/download) and join the same tailnet.
+2. Friend opens `http://<host-tailscale-ip>:3000` (or the MagicDNS name).
+3. For friends who won't install a client, publish via Funnel: `sudo tailscale funnel --bg 3000` → `https://<host>.<tailnet>.ts.net`. **Funnel is public** — put auth in front (see nginx below).
+
+### nginx in front (auth + rate limiting + WebSocket proxy)
+
+Run the game on loopback and let nginx handle TLS, basic auth and limits:
+
+```nginx
+server {
+    listen 127.0.0.1:8080;
+    auth_basic "Armory";
+    auth_basic_user_file /etc/nginx/.htpasswd-pixel;
+    limit_req zone=game burst=15 nodelay;
+    limit_conn perip 6;
+
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_read_timeout 3600s;
+    }
+}
 ```
+
+The `Upgrade`/`Connection` headers are required for the game's WebSockets. Point Tailscale Funnel/Serve at nginx (`tailscale funnel --bg 8080`) instead of the game directly.
+
+### Firewall
+
+Only open the port you actually need, scoped to your subnet — never `Anywhere`:
+
+```bash
+sudo ufw allow from 192.168.0.0/24 to any port 3000 proto tcp
+```
+
+See **[HOSTING.md](HOSTING.md)** for the full production setup used on this machine
+(systemd service, nginx auth/rate-limiting/WebSocket proxy, UFW, Tailscale Funnel),
+including the `deploy/` installer and troubleshooting.
 
 ## Project structure
 
 ```
 server.js          Authoritative game server (Express + ws)
 public/index.html  Client: canvas renderer, input handling, HUD
+deploy/            systemd + nginx + UFW + Tailscale setup (see HOSTING.md)
 ```

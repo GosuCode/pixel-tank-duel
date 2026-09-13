@@ -20,6 +20,8 @@ const ROUND_TIME = 60000;
 const RESTART_DELAY = 4000;
 const MAX_PLAYERS = 4;
 const TICK_MS = 1000 / 60;
+const PORT = Number(process.env.PORT) || 3000;
+const HOST = process.env.HOST || '0.0.0.0';
 
 const POWERUP_TYPES = ['speed', 'rapid', 'triple', 'ricochet', 'shield'];
 const POWERUP_R = 14;
@@ -469,6 +471,6 @@ function tick() {
 
 setInterval(tick, TICK_MS);
 
-server.listen(3000, '0.0.0.0', () => {
-    console.log('Pixel Tank Duel running on port 3000!');
+server.listen(PORT, HOST, () => {
+    console.log(`Pixel Tank Duel running on ${HOST}:${PORT}!`);
 });

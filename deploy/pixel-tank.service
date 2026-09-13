@@ -1,0 +1,17 @@
+[Unit]
+Description=Pixel Tank Duel (authoritative game server)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=@USER@
+WorkingDirectory=@DIR@
+ExecStart=@NODE@ server.js
+Environment=HOST=0.0.0.0
+Environment=PORT=3000
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target
