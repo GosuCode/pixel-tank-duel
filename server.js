@@ -392,11 +392,10 @@ function tick() {
       newX = Math.max(TANK_R, Math.min(ARENA_W - TANK_R, newX));
       newY = Math.max(TANK_R, Math.min(ARENA_H - TANK_R, newY));
 
-      const blocked = OBSTACLES.some((o) => circleRectCollide(newX, newY, TANK_R, o));
-      if (!blocked) {
-        p.x = newX;
-        p.y = newY;
-      }
+      // Resolve each axis separately so a tank pressed into a wall slides along
+      // it instead of jamming. Y uses the possibly-updated X for clean corners.
+      if (!OBSTACLES.some((o) => circleRectCollide(newX, p.y, TANK_R, o))) p.x = newX;
+      if (!OBSTACLES.some((o) => circleRectCollide(p.x, newY, TANK_R, o))) p.y = newY;
     }
 
     const cooldown = buffType === 'laser' ? LASER_COOLDOWN : buffType === 'rapid' ? RAPID_COOLDOWN : FIRE_COOLDOWN;
