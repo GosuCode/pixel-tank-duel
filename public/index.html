@@ -121,6 +121,7 @@
         border: 1px solid rgba(224,169,56,0.7);
     }
     #moveStick { left: 28px; }
+    #aimStick { right: 28px; }
     #fireBtn {
         right: 28px;
         display: none;
@@ -465,7 +466,7 @@
     </div>
     <div id="banner"></div>
     <canvas id="gameCanvas" width="800" height="600"></canvas>
-    <div id="help">Move: WASD / Arrows &nbsp;•&nbsp; Fire: Space &nbsp;•&nbsp; Emote: 1-7 &nbsp;•&nbsp; Chat: T &nbsp;•&nbsp; Scoreboard: Tab</div>
+    <div id="help">Move/Aim: WASD / Arrows &nbsp;•&nbsp; Fire: Space &nbsp;•&nbsp; Emote: 1-7 &nbsp;•&nbsp; Chat: T &nbsp;•&nbsp; Scoreboard: Tab</div>
 </div>
 <div id="scoreboard" class="hidden">
     <div id="scoreCard">
@@ -480,6 +481,7 @@
     </div>
 </div>
 <div id="moveStick" class="stick"><div class="knob"></div></div>
+<div id="aimStick" class="stick"><div class="knob"></div></div>
 <div id="fireBtn">Fire</div>
 <div id="emoteBar"></div>
 <div id="chatBar" class="hidden">
@@ -627,7 +629,7 @@ function hullPath(g, shape) {
     }
 }
 
-function drawTank(g, d) {
+function drawTank(g, d, turretOffset = 0) {
     const body = d.color;
     const dark = shade(body, 0.6);
     const mid = shade(body, 0.82);
@@ -669,6 +671,9 @@ function drawTank(g, d) {
     g.fillRect(-15, -14, 30, 7);
     g.restore();
 
+    // turret + barrel rotate independently of the hull
+    g.save();
+    g.rotate(turretOffset);
     g.fillStyle = dark;
     if (d.turret === 'round') {
         g.beginPath(); g.arc(1, 0, 8, 0, Math.PI * 2); g.fill();
@@ -691,6 +696,7 @@ function drawTank(g, d) {
     g.fillStyle = '#111';
     roundRect(g, 5 + bl - 3, -4, 3, 8, 1.5);
     g.fill();
+    g.restore();
 }
 
 function drawPreview() {
@@ -768,6 +774,30 @@ function buildGarage() {
     }
     row.appendChild(opts);
     garageControls.appendChild(row);
+
+    const ctrlRow = document.createElement('div');
+    ctrlRow.className = 'garageRow';
+    const ctrlLabel = document.createElement('span');
+    ctrlLabel.className = 'garageLabel';
+    ctrlLabel.textContent = 'Controls';
+    ctrlRow.appendChild(ctrlLabel);
+    const ctrlOpts = document.createElement('div');
+    ctrlOpts.className = 'garageOpts';
+    for (const mode of ['aim', 'classic']) {
+        const btn = document.createElement('button');
+        btn.className = 'garageOpt' + (controlMode === mode ? ' selected' : '');
+        btn.textContent = mode === 'aim' ? 'Aim' : 'Classic';
+        btn.onclick = () => {
+            controlMode = mode;
+            localStorage.setItem('controlMode', mode);
+            applyControlMode();
+            buildGarage();
+        };
+        ctrlOpts.appendChild(btn);
+    }
+    ctrlRow.appendChild(ctrlOpts);
+    garageControls.appendChild(ctrlRow);
+
     drawPreview();
     refreshDeployState();
 }
@@ -972,18 +1002,51 @@ let keyboardFire = false;
 window.addEventListener('keydown', (e) => { if (e.target && e.target.tagName === 'INPUT') return; if (e.key === ' ') keyboardFire = true; });
 window.addEventListener('keyup', (e) => { if (e.key === ' ') keyboardFire = false; });
 
+// ---- Control mode + independent aim ----
+let controlMode = localStorage.getItem('controlMode') || 'classic';
+let mouseFire = false;
+let mouseX = null, mouseY = null;
+let aimTouchId = null, stickAim = 0, stickFiring = false;
+
+function canvasPoint(clientX, clientY) {
+    const r = canvas.getBoundingClientRect();
+    return {
+        x: (clientX - r.left) * (canvas.width / r.width),
+        y: (clientY - r.top) * (canvas.height / r.height),
+    };
+}
+canvas.addEventListener('mousemove', (e) => {
+    const pt = canvasPoint(e.clientX, e.clientY);
+    mouseX = pt.x;
+    mouseY = pt.y;
+});
+canvas.addEventListener('mousedown', (e) => { if (e.button === 0) mouseFire = true; });
+window.addEventListener('mouseup', (e) => { if (e.button === 0) mouseFire = false; });
+canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+window.addEventListener('blur', () => { mouseFire = false; });
+
 // ---- Touch controls (shown only on touch devices) ----
 const isTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
 const moveStick = document.getElementById('moveStick');
 const knob = moveStick.querySelector('.knob');
+const aimStick = document.getElementById('aimStick');
+const aimKnob = aimStick.querySelector('.knob');
 const fireBtn = document.getElementById('fireBtn');
 let stickDx = 0, stickDy = 0, stickActive = false, stickTouchId = null;
 let touchFire = false;
 
-if (isTouch) {
+// Show/hide the touch controls for the active mode (twin-stick vs fire button).
+function applyControlMode() {
+    if (!isTouch) return;
+    const aimMode = controlMode === 'aim';
     moveStick.style.display = 'block';
-    fireBtn.style.display = 'flex';
+    aimStick.style.display = aimMode ? 'block' : 'none';
+    fireBtn.style.display = aimMode ? 'none' : 'flex';
+}
+
+if (isTouch) {
     document.getElementById('help').style.display = 'none';
+    applyControlMode();
 
     moveStick.addEventListener('touchstart', (e) => {
         const t = e.changedTouches[0];
@@ -1022,6 +1085,44 @@ if (isTouch) {
     fireBtn.addEventListener('touchstart', (e) => { e.preventDefault(); touchFire = true; });
     fireBtn.addEventListener('touchend', (e) => { e.preventDefault(); touchFire = false; });
     fireBtn.addEventListener('touchcancel', () => { touchFire = false; });
+
+    // right stick: aim + auto-fire while held
+    aimStick.addEventListener('touchstart', (e) => {
+        const t = e.changedTouches[0];
+        aimTouchId = t.identifier;
+        updateAimStick(t);
+    });
+    aimStick.addEventListener('touchmove', (e) => {
+        for (const t of e.changedTouches) if (t.identifier === aimTouchId) updateAimStick(t);
+    });
+    aimStick.addEventListener('touchend', resetAimStick);
+    aimStick.addEventListener('touchcancel', resetAimStick);
+
+    function updateAimStick(t) {
+        const rect = aimStick.getBoundingClientRect();
+        const cx = rect.left + rect.width / 2;
+        const cy = rect.top + rect.height / 2;
+        let dx = (t.clientX - cx) / (rect.width / 2);
+        let dy = (t.clientY - cy) / (rect.height / 2);
+        const len = Math.hypot(dx, dy);
+        if (len < 0.25) {
+            stickFiring = false;
+            aimKnob.style.left = '36px';
+            aimKnob.style.top = '36px';
+            return;
+        }
+        if (len > 1) { dx /= len; dy /= len; }
+        stickAim = Math.atan2(dy, dx);
+        stickFiring = true;
+        aimKnob.style.left = `${36 + dx * 36}px`;
+        aimKnob.style.top = `${36 + dy * 36}px`;
+    }
+    function resetAimStick() {
+        aimTouchId = null;
+        stickFiring = false;
+        aimKnob.style.left = '36px';
+        aimKnob.style.top = '36px';
+    }
 }
 
 // ---- Networking ----
@@ -1087,8 +1188,20 @@ setInterval(() => {
     const kb = computeKeyboardVector();
     const dx = kb.dx !== 0 ? kb.dx : stickDx;
     const dy = kb.dy !== 0 ? kb.dy : stickDy;
-    const fire = keyboardFire || touchFire;
-    ws.send(JSON.stringify({ type: 'input', dx, dy, fire }));
+    let fire = keyboardFire || touchFire;
+    let aim = null;
+    if (controlMode === 'aim') {
+        const mine = myId ? players[myId] : null;
+        if (isTouch) {
+            if (stickFiring) { aim = stickAim; fire = true; }
+        } else if (mine && mouseX !== null) {
+            aim = Math.atan2(mouseY - mine.y, mouseX - mine.x);
+            fire = fire || mouseFire;
+        }
+    }
+    const msg = { type: 'input', dx, dy, fire };
+    if (aim !== null) msg.aim = aim;
+    ws.send(JSON.stringify(msg));
 }, 1000 / 30);
 
 // ---- Rendering ----
@@ -1359,6 +1472,27 @@ function draw() {
         ctx.arc(mine.x, mine.y, ringR + 3, 0, Math.PI * 2);
         ctx.stroke();
         ctx.restore();
+
+        // aim reticle (independent-aim mode only)
+        if (controlMode === 'aim') {
+            const aim = mine.aim || 0;
+            const rx = mine.x + Math.cos(aim) * 62;
+            const ry = mine.y + Math.sin(aim) * 62;
+            ctx.save();
+            ctx.globalAlpha = 0.55;
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.arc(rx, ry, 4, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(rx - 8, ry); ctx.lineTo(rx - 3, ry);
+            ctx.moveTo(rx + 3, ry); ctx.lineTo(rx + 8, ry);
+            ctx.moveTo(rx, ry - 8); ctx.lineTo(rx, ry - 3);
+            ctx.moveTo(rx, ry + 3); ctx.lineTo(rx, ry + 8);
+            ctx.stroke();
+            ctx.restore();
+        }
     }
 
     for (const id in players) {
@@ -1394,7 +1528,7 @@ function draw() {
         ctx.save();
         ctx.translate(p.x, p.y);
         ctx.rotate(p.angle);
-        drawTank(ctx, p.design || DEFAULT_DESIGN);
+        drawTank(ctx, p.design || DEFAULT_DESIGN, (p.aim || 0) - p.angle);
         ctx.restore();
 
         // brief white flash when this tank takes a hit

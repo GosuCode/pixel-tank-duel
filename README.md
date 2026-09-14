@@ -10,8 +10,9 @@ A top-down 2D local multiplayer tank shooter for 2-4 players. One device hosts t
 
 ## Gameplay
 
-- Move: WASD / Arrow keys (desktop) or the on-screen joystick (touch)
-- Fire: Spacebar (desktop) or the FIRE button (touch)
+- Move & aim: WASD / Arrow keys (desktop) or the on-screen joystick (touch) — by default the turret points where you drive
+- Independent aim (optional): switch **Controls → Aim** in the Armory to aim with the mouse (desktop) or the right stick (touch)
+- Fire: Spacebar (desktop) or the FIRE button / right stick (touch)
 - Customize tank: Customize button or G key
 - Trash talk: number keys `1`–`7` for preset emotes, `T` (or Enter) to type a message — or tap the on-screen emote/TALK buttons on touch
 - Scoreboard: hold `Tab` (wins, kills, deaths, damage, accuracy)
@@ -30,6 +31,8 @@ A top-down 2D local multiplayer tank shooter for 2-4 players. One device hosts t
 ## Customize your tank
 
 Before a match (and any time mid-game), open the **Armory** with the button or the **G** key. Set a callsign (required, up to 4 characters), then pick a hull, turret, barrel length and color, and hit **Deploy** — you can't deploy until a callsign is entered. Your callsign shows above your tank and your design is saved in the browser and shared with everyone in the match over WebSockets. Parts are purely cosmetic — they don't change speed, hitbox or damage.
+
+The Armory also has a **Controls** toggle: **Classic** (default) makes the turret point wherever you drive and keeps the touch FIRE button, while **Aim** gives you an independent turret (mouse on desktop, right aim-stick on touch).
 
 ## Power-ups
 

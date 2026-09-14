@@ -273,6 +273,7 @@ function resetPlayerForRound(p, index) {
   p.x = s.x;
   p.y = s.y;
   p.angle = 0;
+  p.aim = 0;
   p.alive = true;
   p.kills = 0;
   p.buff = null;
@@ -370,6 +371,8 @@ wss.on('connection', (ws) => {
     x: spawn.x,
     y: spawn.y,
     angle: 0,
+    aim: 0,
+    aimControlled: false,
     design,
     alive: true,
     kills: 0,
@@ -421,6 +424,10 @@ wss.on('connection', (ws) => {
       p.dx = typeof data.dx === 'number' ? Math.max(-1, Math.min(1, data.dx)) : 0;
       p.dy = typeof data.dy === 'number' ? Math.max(-1, Math.min(1, data.dy)) : 0;
       p.fire = !!data.fire;
+      // Independent aim (radians). Omitted by classic clients, who fall back to
+      // aiming along their movement direction.
+      p.aimControlled = typeof data.aim === 'number' && Number.isFinite(data.aim);
+      if (p.aimControlled) p.aim = data.aim;
     } else if (data.type === 'design') {
       p.design = sanitizeDesign(data.design, p.design);
     } else if (data.type === 'taunt') {
@@ -505,12 +512,15 @@ function tick() {
       if (!OBSTACLES.some((o) => circleRectCollide(p.x, newY, TANK_R, o)) && !tankBlocked(p.x, newY, id)) p.y = newY;
     }
 
+    // Classic control: the turret points wherever you drive.
+    if (!p.aimControlled) p.aim = p.angle;
+
     const cooldown = buffType === 'laser' ? LASER_COOLDOWN : buffType === 'rapid' ? RAPID_COOLDOWN : FIRE_COOLDOWN;
     if (!frozen && p.fire && inPlay && now - p.lastShot > cooldown) {
       p.lastShot = now;
       p.spawnProtectedUntil = 0; // firing forfeits your spawn protection
       const isLaser = buffType === 'laser';
-      const angles = buffType === 'triple' ? [p.angle - TRIPLE_SPREAD, p.angle, p.angle + TRIPLE_SPREAD] : [p.angle];
+      const angles = buffType === 'triple' ? [p.aim - TRIPLE_SPREAD, p.aim, p.aim + TRIPLE_SPREAD] : [p.aim];
       const bounceLimit = buffType === 'ricochet' ? RICOCHET_BOUNCES : 0;
       const speed = isLaser ? LASER_SPEED : BULLET_SPEED;
       for (const angle of angles) {
@@ -687,6 +697,7 @@ function tick() {
       x: p.x,
       y: p.y,
       angle: p.angle,
+      aim: p.aim,
       design: p.design,
       alive: p.alive,
       kills: p.kills,
