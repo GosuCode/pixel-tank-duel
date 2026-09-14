@@ -304,8 +304,11 @@
         transform: translateX(-50%);
         z-index: 12;
         display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
         gap: 6px;
         padding: 6px;
+        max-width: calc(100vw - 20px);
         border-radius: 10px;
         background: rgba(11,12,10,0.72);
         border: 1px solid var(--line);
@@ -390,7 +393,7 @@
     </div>
     <div id="banner"></div>
     <canvas id="gameCanvas" width="800" height="600"></canvas>
-    <div id="help">Move: WASD / Arrows &nbsp;•&nbsp; Fire: Space &nbsp;•&nbsp; Emote: 1-6 &nbsp;•&nbsp; Chat: T</div>
+    <div id="help">Move: WASD / Arrows &nbsp;•&nbsp; Fire: Space &nbsp;•&nbsp; Emote: 1-7 &nbsp;•&nbsp; Chat: T</div>
 </div>
 <div id="moveStick" class="stick"><div class="knob"></div></div>
 <div id="fireBtn">Fire</div>
@@ -444,6 +447,7 @@ const EMOTES = [
     { key: '4', text: 'LOL' },
     { key: '5', text: 'EZ' },
     { key: '6', text: 'OOPS' },
+    { key: '7', text: 'HeHeHe...' },
 ];
 const seenTaunts = {}; // playerId -> taunt.at already reacted to
 const tauntAnims = {}; // playerId -> { start }
@@ -724,6 +728,16 @@ const EMOTE_SOUNDS = {
     LOL: (t) => { [0, 0.09, 0.18, 0.27].forEach((d, i) => tone(i % 2 ? 988 : 880, t + d, 0.07, 'square', 0.1)); },
     EZ: (t) => { tone(660, t, 0.14, 'triangle', 0.13); tone(440, t + 0.15, 0.22, 'triangle', 0.13); },
     OOPS: (t) => { sweep(600, 160, t, 0.4, 'sine', 0.14); },
+    'HeHeHe...': (t) => {
+        // high, wobbling cackle that slides down into a long "haaa"
+        for (let i = 0; i < 11; i++) {
+            const base = 900 - i * 16 + Math.sin(i * 1.9) * 70;
+            const start = t + i * 0.1;
+            tone(base, start, 0.055, 'triangle', 0.13);
+            tone(base * 1.5, start + 0.006, 0.045, 'sawtooth', 0.05);
+        }
+        sweep(760, 300, t + 11 * 0.1, 0.34, 'triangle', 0.13);
+    },
 };
 
 function playTauntSound(text) {
