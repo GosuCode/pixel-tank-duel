@@ -17,6 +17,7 @@ A top-down 2D local multiplayer tank shooter for 2-4 players. One device hosts t
 - Bullets are destroyed when they hit a wall/obstacle — they do not bounce unless you have the Ricochet power-up (see below)
 - Three arena maps (Crossroads, Bunkers, Bastion) — one is picked at random each round, never twice in a row
 - Last tank standing wins the round; if the 60s timer runs out, most kills wins
+- Destroyed tanks erupt in a debris burst with a synthesized boom at the spot they died
 - Rounds auto-restart a few seconds after ending
 - Max 4 players per game
 

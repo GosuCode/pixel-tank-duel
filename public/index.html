@@ -428,6 +428,7 @@ let players = {};
 let bullets = [];
 let obstacles = [];
 let holes = [];
+let explosions = [];
 let powerup = null;
 let mapName = '';
 let arena = { w: 800, h: 600 };
@@ -444,6 +445,8 @@ const EMOTES = [
 ];
 const seenTaunts = {}; // playerId -> taunt.at already reacted to
 const tauntAnims = {}; // playerId -> { start }
+const seenBooms = new Set(); // explosion ids already reacted to
+const boomAnims = {}; // explosion id -> { start, x, y, color, seed }
 let chatOpen = false;
 
 const POWERUP_META = {
@@ -742,6 +745,34 @@ function playTauntSound(text) {
     tone(base * 1.5, t + 0.09, 0.12, 'square', 0.1);
 }
 
+function playExplosionSound(seed) {
+    ensureAudio();
+    if (!audioCtx) return;
+    const t = audioCtx.currentTime + 0.01;
+    const dur = 0.55;
+    // filtered noise burst = the crunch
+    const buffer = audioCtx.createBuffer(1, Math.floor(audioCtx.sampleRate * dur), audioCtx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < data.length; i++) {
+        const env = Math.pow(1 - i / data.length, 2);
+        data[i] = (Math.random() * 2 - 1) * env;
+    }
+    const src = audioCtx.createBufferSource();
+    src.buffer = buffer;
+    src.playbackRate.value = 0.9 + (seed % 5) * 0.05;
+    const filter = audioCtx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.setValueAtTime(1600, t);
+    filter.frequency.exponentialRampToValueAtTime(140, t + dur);
+    const g = audioCtx.createGain();
+    g.gain.setValueAtTime(0.4, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    src.connect(filter).connect(g).connect(audioCtx.destination);
+    src.start(t);
+    // sub-bass thump underneath
+    sweep(140 + (seed % 4) * 12, 38, t, 0.4, 'sine', 0.32);
+}
+
 // ---- Trash talk: UI ----
 const emoteBarEl = document.getElementById('emoteBar');
 for (const e of EMOTES) {
@@ -895,6 +926,17 @@ ws.onmessage = (event) => {
         players = data.players;
         bullets = data.bullets;
         holes = data.holes || [];
+        explosions = data.explosions || [];
+        for (const ex of explosions) {
+            if (!seenBooms.has(ex.id)) {
+                seenBooms.add(ex.id);
+                boomAnims[ex.id] = { start: performance.now(), x: ex.x, y: ex.y, color: ex.color, seed: ex.id };
+                playExplosionSound(ex.id);
+            }
+        }
+        const liveBooms = new Set(explosions.map((e) => e.id));
+        for (const id of seenBooms) if (!liveBooms.has(id)) seenBooms.delete(id);
+        for (const id in boomAnims) if (!liveBooms.has(Number(id))) delete boomAnims[id];
         powerup = data.powerup;
         roundInfo = data.round;
     }
@@ -976,6 +1018,61 @@ function drawTauntBubble(p, text, age) {
         ctx.fillText(lines[i], w / 2, 6 + lineH * i + lineH / 2);
     }
     ctx.textBaseline = 'alphabetic';
+    ctx.restore();
+}
+
+function mulberry32(a) {
+    return function () {
+        a |= 0; a = (a + 0x6D2B79F5) | 0;
+        let t = Math.imul(a ^ (a >>> 15), 1 | a);
+        t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+}
+
+function drawExplosion(anim, age) {
+    const p = Math.min(1, age / 0.9);
+    const rnd = mulberry32((anim.seed * 2654435761) >>> 0);
+    ctx.save();
+    ctx.translate(anim.x, anim.y);
+
+    // expanding shockwave ring
+    ctx.beginPath();
+    ctx.arc(0, 0, 8 + p * 54, 0, Math.PI * 2);
+    ctx.strokeStyle = `rgba(255,214,120,${(1 - p) * 0.9})`;
+    ctx.lineWidth = 3 * (1 - p) + 0.5;
+    ctx.stroke();
+
+    // fireball core
+    const fbR = 20 * (1 - p * 0.55);
+    if (fbR > 0.5) {
+        const grad = ctx.createRadialGradient(0, 0, 0, 0, 0, fbR);
+        grad.addColorStop(0, `rgba(255,255,225,${(1 - p) * 0.95})`);
+        grad.addColorStop(0.45, `rgba(255,168,58,${(1 - p) * 0.85})`);
+        grad.addColorStop(1, 'rgba(180,40,20,0)');
+        ctx.beginPath();
+        ctx.arc(0, 0, fbR, 0, Math.PI * 2);
+        ctx.fillStyle = grad;
+        ctx.fill();
+    }
+
+    // flying debris
+    for (let i = 0; i < 12; i++) {
+        const a = rnd() * Math.PI * 2;
+        const spd = 40 + rnd() * 90;
+        const life = 1 - age / (0.5 + rnd() * 0.4);
+        const size = 2 + rnd() * 3;
+        const spin = (2 + rnd() * 6) * (rnd() < 0.5 ? -1 : 1);
+        const shadePick = i % 3;
+        if (life <= 0) continue;
+        ctx.save();
+        ctx.translate(Math.cos(a) * spd * age, Math.sin(a) * spd * age + 90 * age * age);
+        ctx.rotate(age * spin);
+        ctx.globalAlpha = Math.max(0, life);
+        ctx.fillStyle = shadePick === 0 ? '#2b2f22' : shadePick === 1 ? anim.color : '#c9c3aa';
+        ctx.fillRect(-size / 2, -size / 2, size, size);
+        ctx.restore();
+    }
     ctx.restore();
 }
 
@@ -1117,6 +1214,11 @@ function draw() {
             const age = (performance.now() - tauntAnims[id].start) / 1000;
             drawTauntBubble(p, p.taunt.text, age);
         }
+    }
+
+    for (const id in boomAnims) {
+        const anim = boomAnims[id];
+        drawExplosion(anim, (performance.now() - anim.start) / 1000);
     }
 
     requestAnimationFrame(draw);

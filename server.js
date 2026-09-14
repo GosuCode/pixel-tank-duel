@@ -38,6 +38,7 @@ const HOLE_R = 12; // radius of the tunnel a laser punches through a wall
 const TAUNT_MAX_LEN = 40;
 const TAUNT_COOLDOWN = 1200; // ms between a player's taunts
 const TAUNT_DURATION = 3200; // ms a speech bubble stays up
+const EXPLOSION_DURATION = 900; // ms a wreck stays in the state feed
 
 // Kept deliberately short - this is a friends-on-the-LAN game, not a chat app.
 const PROFANITY = ['fuck', 'shit', 'bitch', 'cunt', 'asshole', 'dick', 'pussy', 'fag', 'nigger', 'retard'];
@@ -167,6 +168,8 @@ let OBSTACLES = MAPS[mapIndex].obstacles;
 const players = {}; // id -> { x,y,angle,design,alive,kills,lastShot,dx,dy,fire,buff }
 let bullets = []; // { x,y,vx,vy,ownerId,bounces,bounceLimit,bornAt,hot,laser,hitIds }
 let holes = []; // { x,y,r } permanent tunnels punched through walls by lasers (reset each round)
+let explosions = []; // { id,x,y,color,at } wreck markers, pruned after EXPLOSION_DURATION
+let explosionSeq = 0;
 
 let round = { state: 'waiting', endAt: 0, winnerText: '' };
 let powerup = null; // { x, y, type }
@@ -247,6 +250,7 @@ function startRound() {
     ids.forEach((id, i) => resetPlayerForRound(players[id], i));
     bullets = [];
     holes = [];
+    explosions = [];
     powerup = null;
     nextPowerupAt = Date.now() + 3000;
     round.state = 'active';
@@ -495,6 +499,13 @@ function tick() {
                         target.buff = null; // shield absorbs the hit and shatters
                     } else {
                         target.alive = false;
+                        explosions.push({
+                            id: ++explosionSeq,
+                            x: target.x,
+                            y: target.y,
+                            color: target.design.color,
+                            at: now,
+                        });
                         if (players[b.ownerId] && b.ownerId !== id) players[b.ownerId].kills++;
                     }
                     if (b.laser) {
@@ -525,6 +536,8 @@ function tick() {
         }
     }
 
+    explosions = explosions.filter((e) => now - e.at < EXPLOSION_DURATION);
+
     const playersOut = {};
     for (const id in players) {
         const p = players[id];
@@ -545,6 +558,7 @@ function tick() {
         players: playersOut,
         bullets: bullets.map((b) => ({ x: b.x, y: b.y, vx: b.vx, vy: b.vy, hot: b.hot, laser: !!b.laser })),
         holes: holes.map((h) => ({ x: h.x, y: h.y, r: h.r })),
+        explosions: explosions.map((e) => ({ id: e.id, x: e.x, y: e.y, color: e.color })),
         powerup: powerup ? { x: powerup.x, y: powerup.y, type: powerup.type } : null,
         round: {
             state: round.state,
