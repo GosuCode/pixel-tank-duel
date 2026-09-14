@@ -433,6 +433,8 @@ let powerup = null;
 let mapName = '';
 let arena = { w: 800, h: 600 };
 let roundInfo = { state: 'waiting', timeLeft: 0, winnerText: '' };
+let roundActiveStart = 0; // performance.now() when the current round went active
+let prevRoundState = 'waiting';
 
 // ---- Trash talk ----
 const EMOTES = [
@@ -512,7 +514,7 @@ function hullPath(g, shape) {
     }
 }
 
-function drawTank(g, d, highlight) {
+function drawTank(g, d) {
     const body = d.color;
     const dark = shade(body, 0.6);
     const mid = shade(body, 0.82);
@@ -576,14 +578,6 @@ function drawTank(g, d, highlight) {
     g.fillStyle = '#111';
     roundRect(g, 5 + bl - 3, -4, 3, 8, 1.5);
     g.fill();
-
-    if (highlight) {
-        g.strokeStyle = '#fff';
-        g.lineWidth = 2;
-        g.lineJoin = 'round';
-        hullPath(g, d.hull);
-        g.stroke();
-    }
 }
 
 function drawPreview() {
@@ -593,7 +587,7 @@ function drawPreview() {
     previewCtx.save();
     previewCtx.translate(w / 2, h / 2);
     previewCtx.scale(2.6, 2.6);
-    drawTank(previewCtx, design, false);
+    drawTank(previewCtx, design);
     previewCtx.restore();
 }
 
@@ -938,6 +932,8 @@ ws.onmessage = (event) => {
         for (const id of seenBooms) if (!liveBooms.has(id)) seenBooms.delete(id);
         for (const id in boomAnims) if (!liveBooms.has(Number(id))) delete boomAnims[id];
         powerup = data.powerup;
+        if (data.round.state === 'active' && prevRoundState !== 'active') roundActiveStart = performance.now();
+        prevRoundState = data.round.state;
         roundInfo = data.round;
     }
 };
@@ -1162,6 +1158,32 @@ function draw() {
         ctx.fill();
     }
 
+    // Floor marker under your own tank (drawn before tanks so it sits on the ground)
+    const mine = myId ? players[myId] : null;
+    if (mine && mine.alive) {
+        const accent = (mine.design && mine.design.color) || '#e0a938';
+        const ringR = 24 + 2 * Math.sin(performance.now() / 260);
+        ctx.save();
+        ctx.globalAlpha = 0.14;
+        ctx.fillStyle = accent;
+        ctx.beginPath();
+        ctx.arc(mine.x, mine.y, ringR + 4, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = 0.9;
+        ctx.strokeStyle = accent;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(mine.x, mine.y, ringR, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.globalAlpha = 0.3;
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.arc(mine.x, mine.y, ringR + 3, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+    }
+
     for (const id in players) {
         const p = players[id];
         if (!p.alive) continue;
@@ -1182,7 +1204,7 @@ function draw() {
         ctx.save();
         ctx.translate(p.x, p.y);
         ctx.rotate(p.angle);
-        drawTank(ctx, p.design || DEFAULT_DESIGN, id === myId);
+        drawTank(ctx, p.design || DEFAULT_DESIGN);
         ctx.restore();
 
         const label = (p.design && p.design.name) || '';
@@ -1213,6 +1235,35 @@ function draw() {
         if (p.taunt && tauntAnims[id]) {
             const age = (performance.now() - tauntAnims[id].start) / 1000;
             drawTauntBubble(p, p.taunt.text, age);
+        }
+    }
+
+    // Round-start "find yourself" cue on your own tank, first 1.5s only
+    if (mine && mine.alive && roundActiveStart) {
+        const sinceStart = performance.now() - roundActiveStart;
+        if (sinceStart < 1500) {
+            const t = sinceStart / 1500;
+            const accent = (mine.design && mine.design.color) || '#e0a938';
+            ctx.save();
+            ctx.globalAlpha = (1 - t) * 0.8;
+            ctx.strokeStyle = accent;
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(mine.x, mine.y, 24 + t * 50, 0, Math.PI * 2);
+            ctx.stroke();
+            const ay = mine.y - 44 + Math.sin(performance.now() / 120) * 4 - t * 10;
+            ctx.globalAlpha = (1 - t) * 0.95;
+            ctx.fillStyle = accent;
+            ctx.beginPath();
+            ctx.moveTo(mine.x - 9, ay);
+            ctx.lineTo(mine.x + 9, ay);
+            ctx.lineTo(mine.x, ay + 12);
+            ctx.closePath();
+            ctx.fill();
+            ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+            ctx.lineWidth = 1;
+            ctx.stroke();
+            ctx.restore();
         }
     }
 
