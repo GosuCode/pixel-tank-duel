@@ -306,6 +306,68 @@
         color: var(--red);
     }
     #garageError.hidden { display: none; }
+    #scoreboard {
+        position: fixed;
+        inset: 0;
+        z-index: 40;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(5,6,4,0.72);
+        backdrop-filter: blur(2px);
+    }
+    #scoreboard.hidden { display: none; }
+    #scoreCard {
+        background: var(--panel);
+        border: 1px solid var(--line2);
+        border-radius: 10px;
+        padding: 18px 22px 14px;
+        min-width: min(440px, 92vw);
+        box-shadow: 0 30px 80px rgba(0,0,0,0.7);
+    }
+    #scoreCard h2 {
+        margin: 0 0 12px;
+        font-size: 13px;
+        letter-spacing: 0.3em;
+        text-transform: uppercase;
+        text-align: center;
+        color: var(--amber);
+    }
+    #scoreCard table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    #scoreCard th {
+        text-align: right;
+        padding: 5px 8px;
+        font-size: 9px;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+        color: var(--muted);
+        border-bottom: 1px solid var(--line);
+    }
+    #scoreCard th:nth-child(2) { text-align: left; }
+    #scoreCard td {
+        text-align: right;
+        padding: 6px 8px;
+        font-variant-numeric: tabular-nums;
+        border-bottom: 1px solid rgba(43,47,34,0.5);
+    }
+    #scoreCard td:nth-child(2) { text-align: left; font-weight: 700; }
+    #scoreCard tr.me td { color: var(--amber); }
+    #scoreCard tr.out td { opacity: 0.5; }
+    .scoreSwatch {
+        display: inline-block;
+        width: 10px;
+        height: 10px;
+        border-radius: 2px;
+        border: 1px solid rgba(0,0,0,0.5);
+    }
+    .scoreHint {
+        margin: 12px 0 0;
+        text-align: center;
+        font-size: 9px;
+        letter-spacing: 0.2em;
+        text-transform: uppercase;
+        color: var(--muted);
+    }
     #emoteBar {
         position: fixed;
         left: 50%;
@@ -398,11 +460,24 @@
     <div id="hud">
         <span id="timer">--</span>
         <span id="status"></span>
+        <span id="series"></span>
         <span id="myBuff"></span>
     </div>
     <div id="banner"></div>
     <canvas id="gameCanvas" width="800" height="600"></canvas>
-    <div id="help">Move: WASD / Arrows &nbsp;•&nbsp; Fire: Space &nbsp;•&nbsp; Emote: 1-7 &nbsp;•&nbsp; Chat: T</div>
+    <div id="help">Move: WASD / Arrows &nbsp;•&nbsp; Fire: Space &nbsp;•&nbsp; Emote: 1-7 &nbsp;•&nbsp; Chat: T &nbsp;•&nbsp; Scoreboard: Tab</div>
+</div>
+<div id="scoreboard" class="hidden">
+    <div id="scoreCard">
+        <h2 id="scoreTitle">Match</h2>
+        <table>
+            <thead>
+                <tr><th></th><th>Callsign</th><th>W</th><th>K</th><th>D</th><th>DMG</th><th>ACC</th></tr>
+            </thead>
+            <tbody id="scoreBody"></tbody>
+        </table>
+        <p class="scoreHint">Hold Tab</p>
+    </div>
 </div>
 <div id="moveStick" class="stick"><div class="knob"></div></div>
 <div id="fireBtn">Fire</div>
@@ -430,8 +505,12 @@ const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 const timerEl = document.getElementById('timer');
 const statusEl = document.getElementById('status');
+const seriesEl = document.getElementById('series');
 const myBuffEl = document.getElementById('myBuff');
 const bannerEl = document.getElementById('banner');
+const scoreboardEl = document.getElementById('scoreboard');
+const scoreTitleEl = document.getElementById('scoreTitle');
+const scoreBodyEl = document.getElementById('scoreBody');
 
 const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
 const ws = new WebSocket(`${protocol}//${location.host}`);
@@ -446,6 +525,8 @@ let powerup = null;
 let mapName = '';
 let arena = { w: 800, h: 600 };
 let roundInfo = { state: 'waiting', timeLeft: 0, winnerText: '' };
+let matchInfo = { targetWins: 3, roundNumber: 0, over: false, winnerText: '' };
+let powerupNext = null;
 let roundActiveStart = 0; // performance.now() when the current round went active
 let prevRoundState = 'waiting';
 
@@ -989,6 +1070,8 @@ ws.onmessage = (event) => {
         for (const id of seenBooms) if (!liveBooms.has(id)) seenBooms.delete(id);
         for (const id in boomAnims) if (!liveBooms.has(Number(id))) delete boomAnims[id];
         powerup = data.powerup;
+        powerupNext = data.powerupNext || null;
+        if (data.match) matchInfo = data.match;
         if (data.round.state === 'active' && prevRoundState !== 'active') roundActiveStart = performance.now();
         prevRoundState = data.round.state;
         roundInfo = data.round;
@@ -1199,6 +1282,25 @@ function draw() {
         ctx.textBaseline = 'middle';
         ctx.fillText(meta.label, powerup.x, powerup.y + 1);
         ctx.textBaseline = 'alphabetic';
+    } else if (powerupNext) {
+        // announced next spawn: a pulsing ring at the spot + a countdown
+        const meta = POWERUP_META[powerupNext.type];
+        const pulse = 2 * Math.sin(Date.now() / 140);
+        ctx.save();
+        ctx.globalAlpha = 0.5;
+        ctx.setLineDash([5, 5]);
+        ctx.strokeStyle = meta.color;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(powerupNext.x, powerupNext.y, 15 + pulse, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.globalAlpha = 0.9;
+        ctx.fillStyle = meta.color;
+        ctx.font = 'bold 10px ui-monospace, monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText(Math.ceil(powerupNext.timeLeft / 1000) + 's', powerupNext.x, powerupNext.y - 22);
+        ctx.restore();
     }
 
     for (const b of bullets) {
@@ -1273,6 +1375,19 @@ function draw() {
             ctx.fillStyle = '#2979ff';
             ctx.globalAlpha = 0.12;
             ctx.fill();
+            ctx.globalAlpha = 1;
+        }
+
+        if (p.spawnProtected) {
+            const pulse = 1.5 * Math.sin(performance.now() / 90);
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, 20 + pulse, 0, Math.PI * 2);
+            ctx.strokeStyle = '#e6f7ff';
+            ctx.lineWidth = 1.5;
+            ctx.globalAlpha = 0.6;
+            ctx.setLineDash([4, 4]);
+            ctx.stroke();
+            ctx.setLineDash([]);
             ctx.globalAlpha = 1;
         }
 
@@ -1380,20 +1495,82 @@ setInterval(() => {
         myBuffEl.textContent = '';
     }
 
-    if (roundInfo.state === 'active') {
+    if (matchInfo.roundNumber > 0 || matchInfo.over) {
+        seriesEl.textContent = matchInfo.over
+            ? matchInfo.winnerText
+            : `Round ${matchInfo.roundNumber} · first to ${matchInfo.targetWins}`;
+    } else {
+        seriesEl.textContent = `First to ${matchInfo.targetWins}`;
+    }
+
+    if (roundInfo.state === 'countdown') {
+        timerEl.textContent = Math.ceil(roundInfo.countdownLeft / 1000) + 's';
+        statusEl.textContent = 'Get ready';
+        bannerEl.textContent = 'GET READY\n' + Math.ceil(roundInfo.countdownLeft / 1000);
+    } else if (roundInfo.state === 'active') {
         timerEl.textContent = Math.ceil(roundInfo.timeLeft / 1000) + 's';
         statusEl.textContent = mapName ? `${mapName} · ${alive}/${total} alive` : `${alive}/${total} alive`;
         bannerEl.textContent = '';
+    } else if (roundInfo.state === 'sudden') {
+        timerEl.textContent = Math.ceil(roundInfo.timeLeft / 1000) + 's';
+        statusEl.textContent = 'next kill wins';
+        bannerEl.textContent = 'SUDDEN DEATH';
     } else if (roundInfo.state === 'ended') {
         timerEl.textContent = '';
         statusEl.textContent = '';
-        bannerEl.textContent = roundInfo.winnerText + '\nNext round soon...';
+        bannerEl.textContent = matchInfo.over
+            ? matchInfo.winnerText + '\nNew match soon...'
+            : roundInfo.winnerText + '\nNext round soon...';
     } else {
         timerEl.textContent = '';
         statusEl.textContent = total < 2 ? 'Waiting for another player...' : '';
         bannerEl.textContent = total < 2 ? '' : '';
     }
 }, 200);
+
+// ---- Scoreboard (hold Tab) ----
+function renderScoreboard() {
+    const rows = Object.keys(players)
+        .map((id) => ({ id, p: players[id] }))
+        .sort((a, b) => (b.p.matchWins - a.p.matchWins) || (b.p.kills - a.p.kills) || (b.p.damage - a.p.damage));
+    scoreTitleEl.textContent = matchInfo.over ? matchInfo.winnerText : `Match · first to ${matchInfo.targetWins}`;
+    scoreBodyEl.innerHTML = '';
+    for (const { id, p } of rows) {
+        const tr = document.createElement('tr');
+        if (id === myId) tr.className = 'me';
+        else if (!p.alive) tr.className = 'out';
+        const acc = p.shots > 0 ? Math.round((p.hits / p.shots) * 100) + '%' : '—';
+        const cells = [
+            `<span class="scoreSwatch" style="background:${(p.design && p.design.color) || '#888'}"></span>`,
+            (p.design && p.design.name) || '—',
+            p.matchWins || 0,
+            p.kills || 0,
+            p.deaths || 0,
+            p.damage || 0,
+            acc,
+        ];
+        for (const c of cells) {
+            const td = document.createElement('td');
+            td.innerHTML = c;
+            tr.appendChild(td);
+        }
+        scoreBodyEl.appendChild(tr);
+    }
+}
+
+function setScoreboard(show) {
+    if (show) renderScoreboard();
+    scoreboardEl.classList.toggle('hidden', !show);
+}
+window.addEventListener('keydown', (e) => {
+    if (e.target && e.target.tagName === 'INPUT') return;
+    if (e.key === 'Tab') { e.preventDefault(); setScoreboard(true); }
+});
+window.addEventListener('keyup', (e) => {
+    if (e.key === 'Tab') { e.preventDefault(); setScoreboard(false); }
+});
+window.addEventListener('blur', () => setScoreboard(false));
+
 </script>
 </body>
 </html>

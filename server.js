@@ -20,6 +20,12 @@ const MAX_HP = 3; // shots to destroy a tank
 const FIRE_COOLDOWN = 600;
 const ROUND_TIME = 60000;
 const RESTART_DELAY = 4000;
+const MATCH_END_DELAY = 9000; // longer pause after the match is decided
+const MATCH_TARGET_WINS = 3; // first to this many round wins takes the match
+const COUNTDOWN_MS = 3000; // freeze before a round goes live
+const SPAWN_PROTECT_MS = 1200; // no damage at round start, dropped early if you fire
+const SUDDEN_TIME = 15000; // sudden-death window
+const SUDDEN_HP = 1; // everyone drops to this in sudden death
 const MAX_PLAYERS = 4;
 const TICK_MS = 1000 / 60;
 const PORT = Number(process.env.PORT) || 3000;
@@ -28,7 +34,8 @@ const HOST = process.env.HOST || '0.0.0.0';
 const POWERUP_TYPES = ['speed', 'rapid', 'triple', 'ricochet', 'shield', 'laser'];
 const POWERUP_R = 14;
 const POWERUP_DURATION = 8000;
-const POWERUP_RESPAWN = 12000;
+const POWERUP_FIRST_AT = 8000; // first spawn after the round goes live
+const POWERUP_INTERVAL = 16000; // then one every interval, fixed spots/types
 const SPEED_MULT = 1.7;
 const RAPID_COOLDOWN = 240;
 const TRIPLE_SPREAD = 0.26; // radians, ~15 degrees
@@ -136,6 +143,9 @@ const MAPS = [
       { x: 60, y: CY - 10, w: 80, h: 20 },
       { x: ARENA_W - 140, y: CY - 10, w: 80, h: 20 },
     ],
+    powerupSpots: [
+      { x: 200, y: 150 }, { x: 600, y: 150 }, { x: 600, y: 450 }, { x: 200, y: 450 },
+    ],
   },
   {
     name: 'Bunkers',
@@ -146,6 +156,9 @@ const MAPS = [
       { x: CX + 90, y: CY - 130, w: 90, h: 20 },
       { x: CX - 180, y: CY + 110, w: 90, h: 20 },
       { x: CX + 90, y: CY + 110, w: 90, h: 20 },
+    ],
+    powerupSpots: [
+      { x: 170, y: 150 }, { x: 630, y: 150 }, { x: 630, y: 450 }, { x: 170, y: 450 },
     ],
   },
   {
@@ -161,21 +174,34 @@ const MAPS = [
       { x: CX + 120, y: CY - 90, w: 20, h: 60 },
       { x: CX + 120, y: CY + 30, w: 20, h: 60 },
     ],
+    powerupSpots: [
+      { x: 180, y: 300 }, { x: 620, y: 300 }, { x: 400, y: 120 }, { x: 400, y: 480 },
+    ],
   },
 ];
 
 let mapIndex = 0;
 let OBSTACLES = MAPS[mapIndex].obstacles;
+let POWERUP_SPOTS = MAPS[mapIndex].powerupSpots;
 
-const players = {}; // id -> { x,y,angle,design,alive,kills,lastShot,dx,dy,fire,buff }
+const players = {}; // id -> { x,y,angle,design,alive,kills,hp,buff,matchWins,stats,... }
 let bullets = []; // { x,y,vx,vy,ownerId,bounces,bounceLimit,bornAt,hot,laser,hitIds }
 let holes = []; // { x,y,r } permanent tunnels punched through walls by lasers (reset each round)
 let explosions = []; // { id,x,y,color,at } wreck markers, pruned after EXPLOSION_DURATION
 let explosionSeq = 0;
 
-let round = { state: 'waiting', endAt: 0, winnerText: '' };
+let round = {
+  state: 'waiting', // waiting | countdown | active | sudden | ended
+  endAt: 0,
+  winnerText: '',
+  winnerId: null,
+  endsWaitingAt: 0,
+  countdownEndAt: 0,
+  powerupPlan: [],
+  powerupIndex: 0,
+};
+let match = { targetWins: MATCH_TARGET_WINS, roundNumber: 0, over: false, winnerText: '' };
 let powerup = null; // { x, y, type }
-let nextPowerupAt = 0;
 
 function circleRectCollide(cx, cy, r, rect) {
     const closestX = Math.max(rect.x, Math.min(cx, rect.x + rect.w));
@@ -222,17 +248,20 @@ function addHole(x, y) {
   holes.push({ x, y, r: HOLE_R });
 }
 
-function spawnPowerup() {
-  const margin = 50;
-  for (let attempt = 0; attempt < 30; attempt++) {
-    const x = margin + Math.random() * (ARENA_W - margin * 2);
-    const y = margin + Math.random() * (ARENA_H - margin * 2);
-    const blocked = OBSTACLES.some((o) => circleRectCollide(x, y, POWERUP_R + 10, o));
-    if (!blocked) {
-      powerup = { x, y, type: POWERUP_TYPES[Math.floor(Math.random() * POWERUP_TYPES.length)] };
-      return;
-    }
+// Powerups are a contested objective, not a lottery: fixed per-map spots and a
+// fixed type order on a fixed clock, so the plan is identical every round.
+function buildPowerupPlan(startAt) {
+  const plan = [];
+  for (let i = 0; i < 4; i++) {
+    const spot = POWERUP_SPOTS[i % POWERUP_SPOTS.length];
+    plan.push({
+      at: startAt + POWERUP_FIRST_AT + i * POWERUP_INTERVAL,
+      x: spot.x,
+      y: spot.y,
+      type: POWERUP_TYPES[i % POWERUP_TYPES.length],
+    });
   }
+  return plan;
 }
 
 function nextSpawn(index) {
@@ -244,12 +273,16 @@ function resetPlayerForRound(p, index) {
   p.x = s.x;
   p.y = s.y;
   p.angle = 0;
-    p.alive = true;
-    p.kills = 0;
-    p.buff = null;
-    p.taunt = null;
-    p.hp = MAX_HP;
-    p.lastHitAt = 0;
+  p.alive = true;
+  p.kills = 0;
+  p.buff = null;
+  p.taunt = null;
+  p.hp = MAX_HP;
+  p.lastHitAt = 0;
+  p.spawnProtectedUntil = 0;
+  p.dx = 0;
+  p.dy = 0;
+  p.fire = false;
 }
 
 function broadcastMap() {
@@ -264,6 +297,7 @@ function startRound() {
   if (MAPS.length > 1 && idx === mapIndex) idx = (idx + 1) % MAPS.length;
   mapIndex = idx;
   OBSTACLES = MAPS[mapIndex].obstacles;
+  POWERUP_SPOTS = MAPS[mapIndex].powerupSpots;
   broadcastMap();
 
   const ids = Object.keys(players);
@@ -272,16 +306,43 @@ function startRound() {
   holes = [];
   explosions = [];
   powerup = null;
-  nextPowerupAt = Date.now() + 3000;
-  round.state = 'active';
-  round.endAt = Date.now() + ROUND_TIME;
+
+  const now = Date.now();
+  round.countdownEndAt = now + COUNTDOWN_MS;
+  round.powerupPlan = buildPowerupPlan(round.countdownEndAt);
+  round.powerupIndex = 0;
+  round.state = 'countdown';
+  round.endAt = 0;
   round.winnerText = '';
+  round.winnerId = null;
 }
 
-function endRound(winnerText) {
+function beginActiveRound(now) {
+  round.state = 'active';
+  round.endAt = now + ROUND_TIME;
+  for (const id in players) players[id].spawnProtectedUntil = now + SPAWN_PROTECT_MS;
+}
+
+function endRound(winnerId, winnerText) {
+  const now = Date.now();
   round.state = 'ended';
+  round.winnerId = winnerId || null;
   round.winnerText = winnerText;
-  round.endsWaitingAt = Date.now() + RESTART_DELAY;
+  match.roundNumber += 1;
+  const winner = winnerId ? players[winnerId] : null;
+  if (winner) {
+    winner.matchWins += 1;
+    if (winner.matchWins >= match.targetWins) {
+      match.over = true;
+      match.winnerText = `${displayName(winner)} wins the match!`;
+    }
+  }
+  round.endsWaitingAt = now + (match.over ? MATCH_END_DELAY : RESTART_DELAY);
+}
+
+function resetMatch() {
+  match = { targetWins: MATCH_TARGET_WINS, roundNumber: 0, over: false, winnerText: '' };
+  for (const id in players) players[id].matchWins = 0;
 }
 
 function maybeStartRound() {
@@ -310,17 +371,24 @@ wss.on('connection', (ws) => {
     y: spawn.y,
     angle: 0,
     design,
-        alive: true,
-        kills: 0,
-        hp: MAX_HP,
-        lastHitAt: 0,
-        lastShot: 0,
+    alive: true,
+    kills: 0,
+    hp: MAX_HP,
+    lastHitAt: 0,
+    spawnProtectedUntil: 0,
+    lastShot: 0,
     dx: 0,
     dy: 0,
     fire: false,
     buff: null,
     taunt: null,
     lastTaunt: 0,
+    matchWins: 0,
+    deaths: 0,
+    damage: 0,
+    shots: 0,
+    hits: 0,
+    powerups: 0,
   };
 
   ws.send(JSON.stringify({
@@ -332,6 +400,11 @@ wss.on('connection', (ws) => {
     palette: TANK_COLORS,
     parts: TANK_PARTS,
   }));
+
+  // joining mid-round: grant the same spawn protection so you can't be sniped on entry
+  if (round.state === 'active' || round.state === 'sudden') {
+    players[id].spawnProtectedUntil = Date.now() + SPAWN_PROTECT_MS;
+  }
 
   maybeStartRound();
 
@@ -364,7 +437,8 @@ wss.on('connection', (ws) => {
 
   ws.on('close', () => {
     delete players[id];
-    if (Object.keys(players).length < 2 && round.state === 'active') {
+    const inPlayStates = round.state === 'countdown' || round.state === 'active' || round.state === 'sudden';
+    if (Object.keys(players).length < 2 && inPlayStates) {
       round.state = 'waiting';
     }
   });
@@ -373,10 +447,20 @@ wss.on('connection', (ws) => {
 function tick() {
   const now = Date.now();
 
-  // Power-up spawning + pickup (only during active rounds)
-  if (round.state === 'active') {
-    if (!powerup && now >= nextPowerupAt) spawnPowerup();
+  // Countdown -> live
+  if (round.state === 'countdown' && now >= round.countdownEndAt) {
+    beginActiveRound(now);
+  }
 
+  const inPlay = round.state === 'active' || round.state === 'sudden';
+
+  // Deterministic powerup schedule + pickup (active only)
+  if (round.state === 'active') {
+    while (round.powerupIndex < round.powerupPlan.length && now >= round.powerupPlan[round.powerupIndex].at) {
+      const s = round.powerupPlan[round.powerupIndex];
+      powerup = { x: s.x, y: s.y, type: s.type };
+      round.powerupIndex++;
+    }
     if (powerup) {
       for (const id in players) {
         const p = players[id];
@@ -385,8 +469,8 @@ function tick() {
         const dy = p.y - powerup.y;
         if (dx * dx + dy * dy < (TANK_R + POWERUP_R) * (TANK_R + POWERUP_R)) {
           p.buff = { type: powerup.type, expiresAt: now + POWERUP_DURATION };
+          p.powerups++;
           powerup = null;
-          nextPowerupAt = now + POWERUP_RESPAWN;
           break;
         }
       }
@@ -402,7 +486,8 @@ function tick() {
     if (p.buff && now >= p.buff.expiresAt) p.buff = null;
     const buffType = p.buff ? p.buff.type : null;
 
-    if (p.dx !== 0 || p.dy !== 0) {
+    const frozen = round.state === 'countdown';
+    if (!frozen && (p.dx !== 0 || p.dy !== 0)) {
       const len = Math.hypot(p.dx, p.dy) || 1;
       const nx = p.dx / len;
       const ny = p.dy / len;
@@ -421,8 +506,9 @@ function tick() {
     }
 
     const cooldown = buffType === 'laser' ? LASER_COOLDOWN : buffType === 'rapid' ? RAPID_COOLDOWN : FIRE_COOLDOWN;
-    if (p.fire && round.state === 'active' && now - p.lastShot > cooldown) {
+    if (!frozen && p.fire && inPlay && now - p.lastShot > cooldown) {
       p.lastShot = now;
+      p.spawnProtectedUntil = 0; // firing forfeits your spawn protection
       const isLaser = buffType === 'laser';
       const angles = buffType === 'triple' ? [p.angle - TRIPLE_SPREAD, p.angle, p.angle + TRIPLE_SPREAD] : [p.angle];
       const bounceLimit = buffType === 'ricochet' ? RICOCHET_BOUNCES : 0;
@@ -449,12 +535,13 @@ function tick() {
           startX: bx,
           startY: by,
         });
+        p.shots++;
       }
     }
   }
 
   // Bullets
-  if (round.state === 'active') {
+  if (inPlay) {
     bullets = bullets.filter((b) => {
       b.x += b.vx;
       b.y += b.vy;
@@ -526,14 +613,20 @@ function tick() {
         const dx = target.x - b.x;
         const dy = target.y - b.y;
         if (dx * dx + dy * dy < (TANK_R + BULLET_R) * (TANK_R + BULLET_R)) {
-          if (target.buff && target.buff.type === 'shield') {
+          const shooter = players[b.ownerId];
+          if (shooter) shooter.hits++;
+          if (now < target.spawnProtectedUntil) {
+            // spawn protection: the shot is consumed but does no damage
+          } else if (target.buff && target.buff.type === 'shield') {
             target.buff = null; // shield absorbs the hit and shatters
           } else {
             target.hp -= 1;
             target.lastHitAt = now;
+            if (shooter) shooter.damage += 1;
             if (target.hp <= 0) {
               target.hp = 0;
               target.alive = false;
+              target.deaths += 1;
               explosions.push({
                 id: ++explosionSeq,
                 x: target.x,
@@ -541,7 +634,7 @@ function tick() {
                 color: target.design.color,
                 at: now,
               });
-              if (players[b.ownerId] && b.ownerId !== id) players[b.ownerId].kills++;
+              if (shooter && b.ownerId !== id) shooter.kills++;
             }
           }
           if (b.laser) {
@@ -555,18 +648,31 @@ function tick() {
       return true;
     });
 
-    const alive = Object.values(players).filter((p) => p.alive);
-    const total = Object.keys(players).length;
-    if (total >= 2 && alive.length <= 1) {
-      const winner = alive[0];
-      endRound(winner ? `${displayName(winner)} wins!` : 'Draw!');
+    const ids = Object.keys(players);
+    const aliveIds = ids.filter((id) => players[id].alive);
+    if (ids.length >= 2 && aliveIds.length <= 1) {
+      const wid = aliveIds[0] || null;
+      endRound(wid, wid ? `${displayName(players[wid])} wins the round!` : 'Draw!');
     } else if (now >= round.endAt) {
-      const maxKills = Math.max(...Object.values(players).map((p) => p.kills), 0);
-      const leaders = Object.values(players).filter((p) => p.kills === maxKills && maxKills > 0);
-      endRound(leaders.length === 1 ? `${displayName(leaders[0])} wins on kills!` : "Time's up! Draw!");
+      if (round.state === 'sudden') {
+        endRound(null, 'Sudden death draw!');
+      } else {
+        const maxKills = Math.max(...ids.map((id) => players[id].kills), 0);
+        const leaders = ids.filter((id) => players[id].kills === maxKills && maxKills > 0);
+        if (leaders.length === 1) {
+          endRound(leaders[0], `${displayName(players[leaders[0]])} wins on kills!`);
+        } else {
+          // tied on the clock -> sudden death: 1 HP, next kill wins
+          round.state = 'sudden';
+          round.endAt = now + SUDDEN_TIME;
+          bullets = [];
+          for (const id of aliveIds) players[id].hp = SUDDEN_HP;
+        }
+      }
     }
   } else if (round.state === 'ended') {
     if (now >= round.endsWaitingAt) {
+      if (match.over) resetMatch();
       round.state = 'waiting';
       maybeStartRound();
     }
@@ -582,14 +688,26 @@ function tick() {
       y: p.y,
       angle: p.angle,
       design: p.design,
-            alive: p.alive,
-            kills: p.kills,
-            hp: p.hp,
-            maxHp: MAX_HP,
+      alive: p.alive,
+      kills: p.kills,
+      hp: p.hp,
+      maxHp: MAX_HP,
+      matchWins: p.matchWins,
+      deaths: p.deaths,
+      damage: p.damage,
+      shots: p.shots,
+      hits: p.hits,
+      powerups: p.powerups,
+      spawnProtected: now < p.spawnProtectedUntil,
       buff: p.buff ? { type: p.buff.type, timeLeft: Math.max(0, p.buff.expiresAt - now) } : null,
       taunt: p.taunt && p.taunt.at + TAUNT_DURATION > now ? p.taunt : null,
     };
   }
+
+  const nextPlan = round.powerupPlan[round.powerupIndex];
+  const powerupNext = nextPlan
+    ? { x: nextPlan.x, y: nextPlan.y, type: nextPlan.type, timeLeft: Math.max(0, nextPlan.at - now) }
+    : null;
 
   const state = JSON.stringify({
     type: 'state',
@@ -598,10 +716,19 @@ function tick() {
     holes: holes.map((h) => ({ x: h.x, y: h.y, r: h.r })),
     explosions: explosions.map((e) => ({ id: e.id, x: e.x, y: e.y, color: e.color })),
     powerup: powerup ? { x: powerup.x, y: powerup.y, type: powerup.type } : null,
+    powerupNext,
     round: {
       state: round.state,
-      timeLeft: round.state === 'active' ? Math.max(0, round.endAt - now) : 0,
+      timeLeft: (round.state === 'active' || round.state === 'sudden') ? Math.max(0, round.endAt - now) : 0,
+      countdownLeft: round.state === 'countdown' ? Math.max(0, round.countdownEndAt - now) : 0,
+      winnerId: round.winnerId,
       winnerText: round.winnerText,
+    },
+    match: {
+      targetWins: match.targetWins,
+      roundNumber: match.roundNumber,
+      over: match.over,
+      winnerText: match.winnerText,
     },
   });
   wss.clients.forEach((client) => {

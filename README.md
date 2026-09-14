@@ -14,14 +14,17 @@ A top-down 2D local multiplayer tank shooter for 2-4 players. One device hosts t
 - Fire: Spacebar (desktop) or the FIRE button (touch)
 - Customize tank: Customize button or G key
 - Trash talk: number keys `1`–`7` for preset emotes, `T` (or Enter) to type a message — or tap the on-screen emote/TALK buttons on touch
+- Scoreboard: hold `Tab` (wins, kills, deaths, damage, accuracy)
 - Bullets are destroyed when they hit a wall/obstacle — they do not bounce unless you have the Ricochet power-up (see below)
 - Normal bullets have a fixed range (~400px) and fizzle out mid-air; Ricochet and Laser shots are exempt
 - Tanks are solid to each other and slide around one another instead of overlapping (walls too)
 - Three arena maps (Crossroads, Bunkers, Bastion) — one is picked at random each round, never twice in a row
+- Each round starts with a 3-2-1 countdown and brief spawn protection (drops the moment you fire)
 - Last tank standing wins the round; if the 60s timer runs out, most kills wins
 - Tanks have **3 HP** (shown as a segmented bar above each tank) — three hits destroy one; a hit flashes the tank white
 - Destroyed tanks erupt in a debris burst with a synthesized boom at the spot they died
-- Rounds auto-restart a few seconds after ending
+- Tied on the clock? **Sudden death**: everyone drops to 1 HP and the next kill wins
+- Rounds auto-restart a few seconds after ending; the **match is first to 3 round wins**, then the series resets
 - Max 4 players per game
 
 ## Customize your tank
@@ -30,7 +33,7 @@ Before a match (and any time mid-game), open the **Armory** with the button or t
 
 ## Power-ups
 
-A pickup randomly spawns on the arena (one at a time, respawns ~12s after being taken). Drive over it to grab an 8-second buff:
+Powerups spawn on a fixed clock at fixed spots on each map (first at ~8s, then every ~16s), cycling a fixed type order. The next spawn is announced with a pulsing marker and countdown, so it's a contested objective rather than a lottery. Drive over one to grab an 8-second buff:
 
 | Power | Icon | Effect |
 | --- | --- | --- |
