@@ -19,6 +19,7 @@ A top-down 2D local multiplayer tank shooter for 2-4 players. One device hosts t
 - Tanks are solid to each other and slide around one another instead of overlapping (walls too)
 - Three arena maps (Crossroads, Bunkers, Bastion) — one is picked at random each round, never twice in a row
 - Last tank standing wins the round; if the 60s timer runs out, most kills wins
+- Tanks have **3 HP** (shown as a segmented bar above each tank) — three hits destroy one; a hit flashes the tank white
 - Destroyed tanks erupt in a debris burst with a synthesized boom at the spot they died
 - Rounds auto-restart a few seconds after ending
 - Max 4 players per game
@@ -38,7 +39,7 @@ A pickup randomly spawns on the arena (one at a time, respawns ~12s after being 
 | Triple Shot | T (purple) | Fires a 3-bullet spread instead of 1 |
 | Ricochet | R (yellow) | Bullets survive 3 wall bounces instead of being destroyed on impact — rendered as bigger gold bullets, and not subject to the normal bullet range limit |
 | Energy Shield | B (blue) | Absorbs the next bullet hit (including ricochets/spread shots), then shatters |
-| Laser | L (red) | Fires a fast beam that pierces walls and every tank in its path, killing all enemies it crosses (never its owner). Each wall it passes through keeps a permanent hole for the rest of the round — normal bullets can fly through the holes, but tanks are still blocked |
+| Laser | L (red) | Fires a fast beam that pierces walls and every tank in its path, hitting each enemy once (never its owner). Each wall it passes through keeps a permanent hole for the rest of the round — normal bullets can fly through the holes, but tanks are still blocked |
 
 Your active buff shows as a badge above your tank and a countdown chip in the HUD.
 

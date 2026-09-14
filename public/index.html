@@ -463,6 +463,8 @@ const seenTaunts = {}; // playerId -> taunt.at already reacted to
 const tauntAnims = {}; // playerId -> { start }
 const seenBooms = new Set(); // explosion ids already reacted to
 const boomAnims = {}; // explosion id -> { start, x, y, color, seed }
+const lastHp = {}; // playerId -> last seen hp (to trigger the hit flash)
+const hitFlash = {}; // playerId -> performance.now() of last damage
 let chatOpen = false;
 
 const POWERUP_META = {
@@ -968,6 +970,11 @@ ws.onmessage = (event) => {
             }
         }
         players = data.players;
+        for (const id in players) {
+            const prev = lastHp[id];
+            if (prev !== undefined && players[id].hp < prev) hitFlash[id] = performance.now();
+            lastHp[id] = players[id].hp;
+        }
         bullets = data.bullets;
         holes = data.holes || [];
         explosions = data.explosions || [];
@@ -1065,6 +1072,24 @@ function drawTauntBubble(p, text, age) {
     }
     ctx.textBaseline = 'alphabetic';
     ctx.restore();
+}
+
+function drawHealthBar(x, topY, hp, maxHp) {
+    const segW = 10;
+    const gap = 2;
+    const h = 5;
+    const total = maxHp * segW + (maxHp - 1) * gap;
+    const left = x - total / 2;
+    ctx.fillStyle = 'rgba(0,0,0,0.6)';
+    roundRect(ctx, left - 2, topY - 2, total + 4, h + 4, 2.5);
+    ctx.fill();
+    const fillColor = hp >= maxHp ? '#2ECC40' : hp === 1 ? '#c14b32' : '#e0a938';
+    for (let i = 0; i < maxHp; i++) {
+        const sx = left + i * (segW + gap);
+        ctx.fillStyle = i < hp ? fillColor : 'rgba(255,255,255,0.13)';
+        roundRect(ctx, sx, topY, segW, h, 1.5);
+        ctx.fill();
+    }
 }
 
 function mulberry32(a) {
@@ -1257,14 +1282,29 @@ function draw() {
         drawTank(ctx, p.design || DEFAULT_DESIGN);
         ctx.restore();
 
+        // brief white flash when this tank takes a hit
+        const flashAge = hitFlash[id] ? performance.now() - hitFlash[id] : Infinity;
+        if (flashAge < 160) {
+            ctx.save();
+            ctx.translate(p.x, p.y);
+            ctx.rotate(p.angle);
+            ctx.globalAlpha = 0.65 * (1 - flashAge / 160);
+            ctx.fillStyle = '#fff';
+            hullPath(ctx, (p.design || DEFAULT_DESIGN).hull);
+            ctx.fill();
+            ctx.restore();
+        }
+
+        drawHealthBar(p.x, p.y - 22, p.hp, p.maxHp || 3);
+
         const label = (p.design && p.design.name) || '';
         ctx.textAlign = 'center';
         if (label) {
             ctx.fillStyle = p.design.color;
             ctx.font = 'bold 11px ui-monospace, monospace';
-            ctx.fillText(label, p.x, p.y - 24);
+            ctx.fillText(label, p.x, p.y - 34);
         }
-        const starY = label ? p.y - 36 : p.y - 24;
+        const starY = label ? p.y - 46 : p.y - 34;
         ctx.fillStyle = '#e0a938';
         ctx.font = '11px ui-monospace, monospace';
         ctx.fillText(`★${p.kills}`, p.x, starY);

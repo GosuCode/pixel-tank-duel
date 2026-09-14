@@ -16,6 +16,7 @@ const BULLET_R = 4;
 const BULLET_SPEED = 7;
 const BULLET_MAX_DISTANCE = 400; // normal bullets fizzle out after this; ricochet/laser are exempt
 const TANK_SPEED = 2.2;
+const MAX_HP = 3; // shots to destroy a tank
 const FIRE_COOLDOWN = 600;
 const ROUND_TIME = 60000;
 const RESTART_DELAY = 4000;
@@ -243,10 +244,12 @@ function resetPlayerForRound(p, index) {
   p.x = s.x;
   p.y = s.y;
   p.angle = 0;
-  p.alive = true;
-  p.kills = 0;
-  p.buff = null;
-  p.taunt = null;
+    p.alive = true;
+    p.kills = 0;
+    p.buff = null;
+    p.taunt = null;
+    p.hp = MAX_HP;
+    p.lastHitAt = 0;
 }
 
 function broadcastMap() {
@@ -307,9 +310,11 @@ wss.on('connection', (ws) => {
     y: spawn.y,
     angle: 0,
     design,
-    alive: true,
-    kills: 0,
-    lastShot: 0,
+        alive: true,
+        kills: 0,
+        hp: MAX_HP,
+        lastHitAt: 0,
+        lastShot: 0,
     dx: 0,
     dy: 0,
     fire: false,
@@ -524,15 +529,20 @@ function tick() {
           if (target.buff && target.buff.type === 'shield') {
             target.buff = null; // shield absorbs the hit and shatters
           } else {
-            target.alive = false;
-            explosions.push({
-              id: ++explosionSeq,
-              x: target.x,
-              y: target.y,
-              color: target.design.color,
-              at: now,
-            });
-            if (players[b.ownerId] && b.ownerId !== id) players[b.ownerId].kills++;
+            target.hp -= 1;
+            target.lastHitAt = now;
+            if (target.hp <= 0) {
+              target.hp = 0;
+              target.alive = false;
+              explosions.push({
+                id: ++explosionSeq,
+                x: target.x,
+                y: target.y,
+                color: target.design.color,
+                at: now,
+              });
+              if (players[b.ownerId] && b.ownerId !== id) players[b.ownerId].kills++;
+            }
           }
           if (b.laser) {
             b.hitIds.push(id); // pierce through and keep going
@@ -572,8 +582,10 @@ function tick() {
       y: p.y,
       angle: p.angle,
       design: p.design,
-      alive: p.alive,
-      kills: p.kills,
+            alive: p.alive,
+            kills: p.kills,
+            hp: p.hp,
+            maxHp: MAX_HP,
       buff: p.buff ? { type: p.buff.type, timeLeft: Math.max(0, p.buff.expiresAt - now) } : null,
       taunt: p.taunt && p.taunt.at + TAUNT_DURATION > now ? p.taunt : null,
     };
