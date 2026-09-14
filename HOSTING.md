@@ -300,6 +300,7 @@ sudo tail -f /var/log/nginx/access.log
 
 ## 8. Maintenance
 
+- **Deploy code changes:** `npm run deploy` (restarts the service + reloads nginx; no UFW/htpasswd side effects)
 - **Restart after code changes:** `sudo systemctl restart pixel-tank`
 - **Reload nginx after vhost edits:** `sudo nginx -t && sudo systemctl reload nginx`
 - **Add/remove logins:** `sudo htpasswd /etc/nginx/.htpasswd-pixel <user>` / `sudo htpasswd -D ...`
@@ -327,13 +328,24 @@ All config lives in `deploy/`:
 
 ```
 deploy/setup-nginx-ufw.sh    one-shot installer (nginx + systemd + UFW)
+deploy/redeploy.sh           restart service + reload nginx (code changes)
 deploy/pixel-tank.nginx      game vhost (auth + limits + WS proxy)
 deploy/game-limits.conf      nginx limit zones
 deploy/api-gateway.patched   port-80 vhost with WebSocket headers
 deploy/pixel-tank.service    systemd unit
 ```
 
-Re-run the installer any time (it's idempotent-ish and backs up the api-gateway vhost):
+For code changes (`server.js`, `deploy/*.nginx`, `deploy/*.service`) use the lightweight redeploy:
+
+```bash
+npm run deploy                 # restart + nginx -t + reload
+npm run deploy -- --no-nginx   # restart only
+```
+
+Editing `public/index.html` needs no restart — it's served from disk, just reload the browser.
+
+Re-run the full installer only for first-time host setup or infra changes (nginx vhosts, systemd unit,
+UFW, basic auth). It's idempotent-ish and backs up the api-gateway vhost:
 
 ```bash
 sudo bash deploy/setup-nginx-ufw.sh

@@ -15,7 +15,7 @@ A top-down 2D local multiplayer tank shooter for 2-4 players. One device hosts t
 - Customize tank: Customize button or G key
 - Trash talk: number keys `1`–`6` for preset emotes, `T` (or Enter) to type a message — or tap the on-screen emote/TALK buttons on touch
 - Bullets are destroyed when they hit a wall/obstacle — they do not bounce unless you have the Ricochet power-up (see below)
-- Normal bullets have a fixed range (~480px) and fizzle out mid-air; Ricochet and Laser shots are exempt
+- Normal bullets have a fixed range (~400px) and fizzle out mid-air; Ricochet and Laser shots are exempt
 - Three arena maps (Crossroads, Bunkers, Bastion) — one is picked at random each round, never twice in a row
 - Last tank standing wins the round; if the 60s timer runs out, most kills wins
 - Destroyed tanks erupt in a debris burst with a synthesized boom at the spot they died
@@ -81,6 +81,8 @@ If you want it reachable outside your LAN, deploy `server.js` to any host that r
 - Any VPS (DigitalOcean, Linode, etc.) running `npm start` behind a process manager (pm2, systemd)
 
 The app has no other infra requirements — no database, no build step. Just `npm install && npm start`.
+
+On a systemd host set up with `deploy/`, ship code changes with `npm run deploy` (restarts the service and reloads nginx). Editing `public/index.html` alone needs no restart — just reload the browser. See [HOSTING.md](HOSTING.md) for the full setup.
 
 ### Configuration
 
