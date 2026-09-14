@@ -23,7 +23,7 @@ const TICK_MS = 1000 / 60;
 const PORT = Number(process.env.PORT) || 3000;
 const HOST = process.env.HOST || '0.0.0.0';
 
-const POWERUP_TYPES = ['speed', 'rapid', 'triple', 'ricochet', 'shield'];
+const POWERUP_TYPES = ['speed', 'rapid', 'triple', 'ricochet', 'shield', 'laser'];
 const POWERUP_R = 14;
 const POWERUP_DURATION = 8000;
 const POWERUP_RESPAWN = 12000;
@@ -31,6 +31,16 @@ const SPEED_MULT = 1.7;
 const RAPID_COOLDOWN = 240;
 const TRIPLE_SPREAD = 0.26; // radians, ~15 degrees
 const RICOCHET_BOUNCES = 3;
+const LASER_COOLDOWN = 900;
+const LASER_SPEED = 14; // 2x bullet speed
+const HOLE_R = 12; // radius of the tunnel a laser punches through a wall
+
+const TAUNT_MAX_LEN = 40;
+const TAUNT_COOLDOWN = 1200; // ms between a player's taunts
+const TAUNT_DURATION = 3200; // ms a speech bubble stays up
+
+// Kept deliberately short - this is a friends-on-the-LAN game, not a chat app.
+const PROFANITY = ['fuck', 'shit', 'bitch', 'cunt', 'asshole', 'dick', 'pussy', 'fag', 'nigger', 'retard'];
 
 const TANK_COLORS = [
     { id: 'red', hex: '#FF4136', name: 'Red' },
@@ -63,6 +73,17 @@ function defaultDesign(index, colorHex) {
 function sanitizeName(value, fallback) {
     const raw = typeof value === 'string' ? value : fallback;
     return raw.replace(/[^\w -]/g, '').trim().slice(0, 4);
+}
+
+function sanitizeTaunt(value) {
+    let raw = typeof value === 'string' ? value : '';
+    // strip control chars, collapse whitespace
+    raw = raw.replace(/[\u0000-\u001f\u007f]/g, '').replace(/\s+/g, ' ').trim();
+    if (!raw) return '';
+    for (const word of PROFANITY) {
+        raw = raw.replace(new RegExp(`\\b${word}`, 'gi'), (m) => m[0] + '*'.repeat(m.length - 1));
+    }
+    return raw.slice(0, TAUNT_MAX_LEN);
 }
 
 function sanitizeDesign(input, fallback) {
@@ -144,7 +165,8 @@ let mapIndex = 0;
 let OBSTACLES = MAPS[mapIndex].obstacles;
 
 const players = {}; // id -> { x,y,angle,design,alive,kills,lastShot,dx,dy,fire,buff }
-let bullets = []; // { x,y,vx,vy,ownerId,bounces,bounceLimit,bornAt,hot }
+let bullets = []; // { x,y,vx,vy,ownerId,bounces,bounceLimit,bornAt,hot,laser,hitIds }
+let holes = []; // { x,y,r } permanent tunnels punched through walls by lasers (reset each round)
 
 let round = { state: 'waiting', endAt: 0, winnerText: '' };
 let powerup = null; // { x, y, type }
@@ -156,6 +178,27 @@ function circleRectCollide(cx, cy, r, rect) {
     const dx = cx - closestX;
     const dy = cy - closestY;
     return dx * dx + dy * dy < r * r;
+}
+
+function pointInHole(x, y) {
+    for (const h of holes) {
+        const dx = x - h.x;
+        const dy = y - h.y;
+        if (dx * dx + dy * dy < h.r * h.r) return true;
+    }
+    return false;
+}
+
+function addHole(x, y) {
+    // Skip if a hole already covers this spot so a beam carves a clean tunnel
+    // instead of stacking hundreds of overlapping circles.
+    const minDistSq = (HOLE_R * 0.75) * (HOLE_R * 0.75);
+    for (const h of holes) {
+        const dx = x - h.x;
+        const dy = y - h.y;
+        if (dx * dx + dy * dy < minDistSq) return;
+    }
+    holes.push({ x, y, r: HOLE_R });
 }
 
 function spawnPowerup() {
@@ -183,6 +226,7 @@ function resetPlayerForRound(p, index) {
     p.alive = true;
     p.kills = 0;
     p.buff = null;
+    p.taunt = null;
 }
 
 function broadcastMap() {
@@ -202,6 +246,7 @@ function startRound() {
     const ids = Object.keys(players);
     ids.forEach((id, i) => resetPlayerForRound(players[id], i));
     bullets = [];
+    holes = [];
     powerup = null;
     nextPowerupAt = Date.now() + 3000;
     round.state = 'active';
@@ -248,6 +293,8 @@ wss.on('connection', (ws) => {
         dy: 0,
         fire: false,
         buff: null,
+        taunt: null,
+        lastTaunt: 0,
     };
 
     ws.send(JSON.stringify({
@@ -277,6 +324,15 @@ wss.on('connection', (ws) => {
             p.fire = !!data.fire;
         } else if (data.type === 'design') {
             p.design = sanitizeDesign(data.design, p.design);
+        } else if (data.type === 'taunt') {
+            const now = Date.now();
+            if (now - p.lastTaunt >= TAUNT_COOLDOWN) {
+                const text = sanitizeTaunt(data.text);
+                if (text) {
+                    p.lastTaunt = now;
+                    p.taunt = { text, at: now };
+                }
+            }
         }
     });
 
@@ -338,11 +394,13 @@ function tick() {
             }
         }
 
-        const cooldown = buffType === 'rapid' ? RAPID_COOLDOWN : FIRE_COOLDOWN;
+        const cooldown = buffType === 'laser' ? LASER_COOLDOWN : buffType === 'rapid' ? RAPID_COOLDOWN : FIRE_COOLDOWN;
         if (p.fire && round.state === 'active' && now - p.lastShot > cooldown) {
             p.lastShot = now;
+            const isLaser = buffType === 'laser';
             const angles = buffType === 'triple' ? [p.angle - TRIPLE_SPREAD, p.angle, p.angle + TRIPLE_SPREAD] : [p.angle];
             const bounceLimit = buffType === 'ricochet' ? RICOCHET_BOUNCES : 0;
+            const speed = isLaser ? LASER_SPEED : BULLET_SPEED;
             for (const angle of angles) {
                 const bx = p.x + Math.cos(angle) * (TANK_R + BULLET_R + 2);
                 const by = p.y + Math.sin(angle) * (TANK_R + BULLET_R + 2);
@@ -353,12 +411,14 @@ function tick() {
                 bullets.push({
                     x: bx,
                     y: by,
-                    vx: Math.cos(angle) * BULLET_SPEED,
-                    vy: Math.sin(angle) * BULLET_SPEED,
+                    vx: Math.cos(angle) * speed,
+                    vy: Math.sin(angle) * speed,
                     ownerId: id,
                     bounces: 0,
-                    bounceLimit,
-                    hot: bounceLimit > 1,
+                    bounceLimit: isLaser ? 0 : bounceLimit,
+                    hot: isLaser || bounceLimit > 1,
+                    laser: isLaser,
+                    hitIds: [],
                     bornAt: now,
                 });
             }
@@ -371,19 +431,36 @@ function tick() {
             b.x += b.vx;
             b.y += b.vy;
 
+            // A laser leaves the arena instead of bouncing off its edges.
+            if (b.laser) {
+                if (b.x < -BULLET_R || b.x > ARENA_W + BULLET_R || b.y < -BULLET_R || b.y > ARENA_H + BULLET_R) {
+                    return false;
+                }
+            }
+
             let bounced = false;
-            if (b.x < BULLET_R || b.x > ARENA_W - BULLET_R) {
-                b.vx *= -1;
-                b.x = Math.max(BULLET_R, Math.min(ARENA_W - BULLET_R, b.x));
-                bounced = true;
+            if (!b.laser) {
+                if (b.x < BULLET_R || b.x > ARENA_W - BULLET_R) {
+                    b.vx *= -1;
+                    b.x = Math.max(BULLET_R, Math.min(ARENA_W - BULLET_R, b.x));
+                    bounced = true;
+                }
+                if (b.y < BULLET_R || b.y > ARENA_H - BULLET_R) {
+                    b.vy *= -1;
+                    b.y = Math.max(BULLET_R, Math.min(ARENA_H - BULLET_R, b.y));
+                    bounced = true;
+                }
             }
-            if (b.y < BULLET_R || b.y > ARENA_H - BULLET_R) {
-                b.vy *= -1;
-                b.y = Math.max(BULLET_R, Math.min(ARENA_H - BULLET_R, b.y));
-                bounced = true;
-            }
+
+            // Bullets (not lasers) slip straight through a hole punched in a wall.
+            const inHole = pointInHole(b.x, b.y);
             for (const o of OBSTACLES) {
                 if (circleRectCollide(b.x, b.y, BULLET_R, o)) {
+                    if (b.laser) {
+                        addHole(b.x, b.y); // punch through and keep going
+                        continue;
+                    }
+                    if (inHole) continue;
                     const overlapL = Math.abs(b.x - o.x);
                     const overlapR = Math.abs(b.x - (o.x + o.w));
                     const overlapT = Math.abs(b.y - o.y);
@@ -405,7 +482,12 @@ function tick() {
             for (const id in players) {
                 const target = players[id];
                 if (!target.alive) continue;
-                if (id === b.ownerId && now - b.bornAt < 120) continue;
+                if (b.laser) {
+                    if (id === b.ownerId) continue; // a laser never hurts its own tank
+                    if (b.hitIds.includes(id)) continue; // only damage each tank once per beam
+                } else if (id === b.ownerId && now - b.bornAt < 120) {
+                    continue;
+                }
                 const dx = target.x - b.x;
                 const dy = target.y - b.y;
                 if (dx * dx + dy * dy < (TANK_R + BULLET_R) * (TANK_R + BULLET_R)) {
@@ -414,6 +496,10 @@ function tick() {
                     } else {
                         target.alive = false;
                         if (players[b.ownerId] && b.ownerId !== id) players[b.ownerId].kills++;
+                    }
+                    if (b.laser) {
+                        b.hitIds.push(id); // pierce through and keep going
+                        continue;
                     }
                     return false;
                 }
@@ -450,13 +536,15 @@ function tick() {
             alive: p.alive,
             kills: p.kills,
             buff: p.buff ? { type: p.buff.type, timeLeft: Math.max(0, p.buff.expiresAt - now) } : null,
+            taunt: p.taunt && p.taunt.at + TAUNT_DURATION > now ? p.taunt : null,
         };
     }
 
     const state = JSON.stringify({
         type: 'state',
         players: playersOut,
-        bullets: bullets.map((b) => ({ x: b.x, y: b.y, hot: b.hot })),
+        bullets: bullets.map((b) => ({ x: b.x, y: b.y, vx: b.vx, vy: b.vy, hot: b.hot, laser: !!b.laser })),
+        holes: holes.map((h) => ({ x: h.x, y: h.y, r: h.r })),
         powerup: powerup ? { x: powerup.x, y: powerup.y, type: powerup.type } : null,
         round: {
             state: round.state,

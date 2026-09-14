@@ -13,6 +13,7 @@ A top-down 2D local multiplayer tank shooter for 2-4 players. One device hosts t
 - Move: WASD / Arrow keys (desktop) or the on-screen joystick (touch)
 - Fire: Spacebar (desktop) or the FIRE button (touch)
 - Customize tank: Customize button or G key
+- Trash talk: number keys `1`–`6` for preset emotes, `T` (or Enter) to type a message — or tap the on-screen emote/TALK buttons on touch
 - Bullets are destroyed when they hit a wall/obstacle — they do not bounce unless you have the Ricochet power-up (see below)
 - Three arena maps (Crossroads, Bunkers, Bastion) — one is picked at random each round, never twice in a row
 - Last tank standing wins the round; if the 60s timer runs out, most kills wins
@@ -34,8 +35,17 @@ A pickup randomly spawns on the arena (one at a time, respawns ~12s after being 
 | Triple Shot | T (purple) | Fires a 3-bullet spread instead of 1 |
 | Ricochet | R (yellow) | Bullets survive 3 wall bounces instead of being destroyed on impact — rendered as bigger gold bullets |
 | Energy Shield | B (blue) | Absorbs the next bullet hit (including ricochets/spread shots), then shatters |
+| Laser | L (red) | Fires a fast beam that pierces walls and every tank in its path, killing all enemies it crosses (never its owner). Each wall it passes through keeps a permanent hole for the rest of the round — normal bullets can fly through the holes, but tanks are still blocked |
 
 Your active buff shows as a badge above your tank and a countdown chip in the HUD.
+
+## Trash talk
+
+Every tank can talk smack. A message pops up in a speech bubble above the sender, wobbles for a moment, and plays a synthesized sound (no audio files — generated with the Web Audio API).
+
+- **Emotes:** number keys `1`–`6` (`GG`, `REKT`, `NICE!`, `LOL`, `EZ`, `OOPS`), or tap the emote buttons on the touch bar. Each emote has its own tune.
+- **Free text:** press `T` (or Enter) to open the chat bar, type up to 40 characters and hit Enter. On phones, tap **TALK**.
+- Messages are sanitized server-side (control characters stripped, length capped, a light profanity filter applied) and rate-limited to one taunt per ~1.2s, so a hacked client can't spam or inject. Bubbles fade out after ~3s and clear at the start of each round.
 
 ## Run it
 

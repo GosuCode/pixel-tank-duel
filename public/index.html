@@ -297,6 +297,87 @@
         cursor: pointer;
     }
     #garageDone:hover { filter: brightness(1.08); }
+    #emoteBar {
+        position: fixed;
+        left: 50%;
+        bottom: 96px;
+        transform: translateX(-50%);
+        z-index: 12;
+        display: flex;
+        gap: 6px;
+        padding: 6px;
+        border-radius: 10px;
+        background: rgba(11,12,10,0.72);
+        border: 1px solid var(--line);
+        backdrop-filter: blur(3px);
+    }
+    #emoteBar.hidden { display: none; }
+    .emoteBtn {
+        min-width: 46px;
+        height: 38px;
+        padding: 0 8px;
+        border-radius: 7px;
+        background: transparent;
+        border: 1px solid var(--line2);
+        color: var(--text);
+        font-family: var(--mono);
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.06em;
+        cursor: pointer;
+        transition: border-color 0.12s, color 0.12s, transform 0.08s, background 0.12s;
+    }
+    .emoteBtn:hover { border-color: var(--amber); color: var(--amber); background: rgba(224,169,56,0.08); }
+    .emoteBtn:active { transform: scale(0.9); }
+    .emoteBtn .k { display: block; font-size: 8px; font-weight: 400; color: var(--muted); letter-spacing: 0.1em; }
+    #chatBar {
+        position: fixed;
+        left: 50%;
+        bottom: 96px;
+        transform: translateX(-50%);
+        z-index: 13;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 10px;
+        border-radius: 10px;
+        background: rgba(11,12,10,0.94);
+        border: 1px solid var(--amber-dim);
+        box-shadow: 0 12px 40px rgba(0,0,0,0.6);
+    }
+    #chatBar.hidden { display: none; }
+    #chatInput {
+        width: min(46vw, 320px);
+        background: #0f1109;
+        border: 1px solid var(--line2);
+        border-radius: 6px;
+        color: var(--text);
+        font-family: var(--mono);
+        font-size: 13px;
+        letter-spacing: 0.08em;
+        padding: 8px 10px;
+        outline: none;
+    }
+    #chatInput:focus { border-color: var(--amber); }
+    #chatInput::placeholder { color: var(--muted); opacity: 0.6; }
+    #chatSend {
+        background: var(--amber);
+        color: #141509;
+        border: none;
+        border-radius: 6px;
+        padding: 8px 14px;
+        font-family: var(--mono);
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+        cursor: pointer;
+    }
+    @media (max-width: 560px) {
+        #emoteBar { bottom: 168px; gap: 4px; }
+        .emoteBtn { min-width: 42px; height: 34px; font-size: 11px; }
+        #chatBar { bottom: 168px; }
+    }
 </style>
 </head>
 <body>
@@ -309,10 +390,15 @@
     </div>
     <div id="banner"></div>
     <canvas id="gameCanvas" width="800" height="600"></canvas>
-    <div id="help">Move: WASD / Arrows &nbsp;•&nbsp; Fire: Space</div>
+    <div id="help">Move: WASD / Arrows &nbsp;•&nbsp; Fire: Space &nbsp;•&nbsp; Emote: 1-6 &nbsp;•&nbsp; Chat: T</div>
 </div>
 <div id="moveStick" class="stick"><div class="knob"></div></div>
 <div id="fireBtn">Fire</div>
+<div id="emoteBar"></div>
+<div id="chatBar" class="hidden">
+    <input id="chatInput" maxlength="40" placeholder="Talk smack..." autocomplete="off" spellcheck="false">
+    <button id="chatSend">Send</button>
+</div>
 <button id="customizeBtn">Armory (G)</button>
 <div id="garage">
     <div id="garageCard">
@@ -341,10 +427,24 @@ let myId = null;
 let players = {};
 let bullets = [];
 let obstacles = [];
+let holes = [];
 let powerup = null;
 let mapName = '';
 let arena = { w: 800, h: 600 };
 let roundInfo = { state: 'waiting', timeLeft: 0, winnerText: '' };
+
+// ---- Trash talk ----
+const EMOTES = [
+    { key: '1', text: 'GG' },
+    { key: '2', text: 'REKT' },
+    { key: '3', text: 'NICE!' },
+    { key: '4', text: 'LOL' },
+    { key: '5', text: 'EZ' },
+    { key: '6', text: 'OOPS' },
+];
+const seenTaunts = {}; // playerId -> taunt.at already reacted to
+const tauntAnims = {}; // playerId -> { start }
+let chatOpen = false;
 
 const POWERUP_META = {
     speed: { color: '#00e5ff', label: 'S', name: 'SPEED' },
@@ -352,6 +452,7 @@ const POWERUP_META = {
     triple: { color: '#b388ff', label: 'T', name: 'TRIPLE SHOT' },
     ricochet: { color: '#ffd600', label: 'R', name: 'RICOCHET' },
     shield: { color: '#2979ff', label: 'B', name: 'SHIELD' },
+    laser: { color: '#ff1744', label: 'L', name: 'LASER' },
 };
 
 // ---- Tank design (cosmetic) ----
@@ -577,11 +678,128 @@ document.getElementById('garageDone').onclick = () => garageEl.classList.add('hi
 document.getElementById('customizeBtn').onclick = () => { garageEl.classList.remove('hidden'); drawPreview(); };
 window.addEventListener('keydown', (e) => { if (e.key.toLowerCase() === 'g') { garageEl.classList.remove('hidden'); drawPreview(); } });
 
+// ---- Trash talk: audio ----
+let audioCtx = null;
+function ensureAudio() {
+    if (!audioCtx) {
+        const AC = window.AudioContext || window.webkitAudioContext;
+        if (AC) { try { audioCtx = new AC(); } catch {} }
+    }
+    if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+}
+['pointerdown', 'touchstart', 'keydown'].forEach((ev) =>
+    window.addEventListener(ev, ensureAudio, { passive: true })
+);
+
+function tone(freq, start, dur, type, peak) {
+    if (!audioCtx) return;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = type || 'square';
+    osc.frequency.setValueAtTime(freq, start);
+    gain.gain.setValueAtTime(0.0001, start);
+    gain.gain.exponentialRampToValueAtTime(peak || 0.12, start + 0.012);
+    gain.gain.exponentialRampToValueAtTime(0.0001, start + dur);
+    osc.connect(gain).connect(audioCtx.destination);
+    osc.start(start);
+    osc.stop(start + dur + 0.03);
+}
+
+function sweep(f0, f1, start, dur, type, peak) {
+    if (!audioCtx) return;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = type || 'sine';
+    osc.frequency.setValueAtTime(f0, start);
+    osc.frequency.exponentialRampToValueAtTime(Math.max(1, f1), start + dur);
+    gain.gain.setValueAtTime(0.0001, start);
+    gain.gain.exponentialRampToValueAtTime(peak || 0.12, start + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001, start + dur);
+    osc.connect(gain).connect(audioCtx.destination);
+    osc.start(start);
+    osc.stop(start + dur + 0.03);
+}
+
+const EMOTE_SOUNDS = {
+    GG: (t) => { tone(523, t, 0.1, 'triangle', 0.14); tone(784, t + 0.11, 0.16, 'triangle', 0.14); },
+    REKT: (t) => { tone(330, t, 0.12, 'sawtooth', 0.12); tone(247, t + 0.12, 0.12, 'sawtooth', 0.12); tone(165, t + 0.24, 0.28, 'sawtooth', 0.12); },
+    'NICE!': (t) => { tone(523, t, 0.09, 'square', 0.11); tone(659, t + 0.09, 0.09, 'square', 0.11); tone(880, t + 0.18, 0.18, 'square', 0.11); },
+    LOL: (t) => { [0, 0.09, 0.18, 0.27].forEach((d, i) => tone(i % 2 ? 988 : 880, t + d, 0.07, 'square', 0.1)); },
+    EZ: (t) => { tone(660, t, 0.14, 'triangle', 0.13); tone(440, t + 0.15, 0.22, 'triangle', 0.13); },
+    OOPS: (t) => { sweep(600, 160, t, 0.4, 'sine', 0.14); },
+};
+
+function playTauntSound(text) {
+    ensureAudio();
+    if (!audioCtx) return;
+    const t = audioCtx.currentTime + 0.01;
+    const fn = EMOTE_SOUNDS[text];
+    if (fn) { fn(t); return; }
+    let hash = 0;
+    for (let i = 0; i < text.length; i++) hash = (hash * 31 + text.charCodeAt(i)) >>> 0;
+    const base = 380 + (hash % 7) * 90;
+    tone(base, t, 0.09, 'square', 0.1);
+    tone(base * 1.5, t + 0.09, 0.12, 'square', 0.1);
+}
+
+// ---- Trash talk: UI ----
+const emoteBarEl = document.getElementById('emoteBar');
+for (const e of EMOTES) {
+    const btn = document.createElement('button');
+    btn.className = 'emoteBtn';
+    btn.innerHTML = `${e.text}<span class="k">${e.key}</span>`;
+    btn.onclick = () => sendTaunt(e.text);
+    emoteBarEl.appendChild(btn);
+}
+const chatToggleBtn = document.createElement('button');
+chatToggleBtn.className = 'emoteBtn';
+chatToggleBtn.innerHTML = 'TALK<span class="k">T</span>';
+chatToggleBtn.onclick = openChat;
+emoteBarEl.appendChild(chatToggleBtn);
+
+const chatBarEl = document.getElementById('chatBar');
+const chatInputEl = document.getElementById('chatInput');
+
+function openChat() {
+    if (!garageEl.classList.contains('hidden')) return;
+    chatOpen = true;
+    emoteBarEl.classList.add('hidden');
+    chatBarEl.classList.remove('hidden');
+    chatInputEl.value = '';
+    chatInputEl.focus();
+}
+function closeChat() {
+    chatOpen = false;
+    emoteBarEl.classList.remove('hidden');
+    chatBarEl.classList.add('hidden');
+    chatInputEl.blur();
+}
+function sendTaunt(text) {
+    const t = String(text || '').trim().slice(0, 40);
+    if (!t) return;
+    if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'taunt', text: t }));
+}
+document.getElementById('chatSend').onclick = () => { sendTaunt(chatInputEl.value); closeChat(); };
+chatInputEl.addEventListener('keydown', (e) => {
+    e.stopPropagation();
+    if (e.key === 'Enter') { sendTaunt(chatInputEl.value); closeChat(); }
+    else if (e.key === 'Escape') closeChat();
+});
+
+window.addEventListener('keydown', (e) => {
+    if (e.target && e.target.tagName === 'INPUT') return;
+    if (!garageEl.classList.contains('hidden')) return;
+    if (chatOpen) return;
+    if (e.key === 'Enter' || e.key.toLowerCase() === 't') { e.preventDefault(); openChat(); return; }
+    const emote = EMOTES.find((em) => em.key === e.key);
+    if (emote) { e.preventDefault(); sendTaunt(emote.text); }
+});
+
 // ---- Input state ----
 const keys = {};
 let inputDx = 0, inputDy = 0, inputFire = false;
 
-window.addEventListener('keydown', (e) => { keys[e.key.toLowerCase()] = true; if (e.key === ' ') e.preventDefault(); });
+window.addEventListener('keydown', (e) => { if (e.target && e.target.tagName === 'INPUT') return; keys[e.key.toLowerCase()] = true; if (e.key === ' ') e.preventDefault(); });
 window.addEventListener('keyup', (e) => { keys[e.key.toLowerCase()] = false; });
 
 function computeKeyboardVector() {
@@ -593,7 +811,7 @@ function computeKeyboardVector() {
     return { dx, dy };
 }
 let keyboardFire = false;
-window.addEventListener('keydown', (e) => { if (e.key === ' ') keyboardFire = true; });
+window.addEventListener('keydown', (e) => { if (e.target && e.target.tagName === 'INPUT') return; if (e.key === ' ') keyboardFire = true; });
 window.addEventListener('keyup', (e) => { if (e.key === ' ') keyboardFire = false; });
 
 // ---- Touch controls (shown only on touch devices) ----
@@ -666,8 +884,17 @@ ws.onmessage = (event) => {
         obstacles = data.obstacles;
         mapName = data.name || mapName;
     } else if (data.type === 'state') {
+        for (const id in data.players) {
+            const tp = data.players[id].taunt;
+            if (tp && seenTaunts[id] !== tp.at) {
+                seenTaunts[id] = tp.at;
+                tauntAnims[id] = { start: performance.now() };
+                playTauntSound(tp.text);
+            }
+        }
         players = data.players;
         bullets = data.bullets;
+        holes = data.holes || [];
         powerup = data.powerup;
         roundInfo = data.round;
     }
@@ -675,7 +902,7 @@ ws.onmessage = (event) => {
 
 setInterval(() => {
     if (ws.readyState !== WebSocket.OPEN) return;
-    if (!garageEl.classList.contains('hidden')) {
+    if (!garageEl.classList.contains('hidden') || chatOpen) {
         ws.send(JSON.stringify({ type: 'input', dx: 0, dy: 0, fire: false }));
         return;
     }
@@ -687,6 +914,71 @@ setInterval(() => {
 }, 1000 / 30);
 
 // ---- Rendering ----
+function wrapText(g, text, maxW) {
+    const words = text.split(' ');
+    const lines = [];
+    let line = '';
+    for (const word of words) {
+        const test = line ? line + ' ' + word : word;
+        if (g.measureText(test).width > maxW && line) { lines.push(line); line = word; }
+        else line = test;
+    }
+    if (line) lines.push(line);
+    return lines;
+}
+
+function drawTauntBubble(p, text, age) {
+    ctx.save();
+    ctx.font = 'bold 12px ui-monospace, monospace';
+    const lines = wrapText(ctx, text, 130);
+    const lineH = 15;
+    let maxW = 0;
+    for (const l of lines) maxW = Math.max(maxW, ctx.measureText(l).width);
+    const w = maxW + 18;
+    const h = lines.length * lineH + 12;
+    const anchorX = Math.max(w / 2 + 6, Math.min(canvas.width - w / 2 - 6, p.x));
+    const anchorY = p.y - 40 - h;
+    const accent = p.design ? p.design.color : '#e0a938';
+
+    // pop in, then a springy wobble for ~0.8s
+    const appear = Math.min(1, age / 0.16);
+    const overshoot = age < 0.16 ? 1.22 : 1;
+    const scale = (0.35 + 0.65 * appear) * overshoot;
+    const wob = age < 0.8 ? Math.sin(age * 26) * (1 - age / 0.8) * 0.14 : 0;
+
+    ctx.translate(anchorX, anchorY + h); // pivot on the tail tip
+    ctx.rotate(wob);
+    ctx.scale(scale, scale);
+    ctx.translate(0, -h); // origin now top-left of the bubble
+
+    roundRect(ctx, 0, 0, w, h, 6);
+    ctx.fillStyle = 'rgba(19,21,15,0.95)';
+    ctx.fill();
+    ctx.strokeStyle = accent;
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.moveTo(w / 2 - 6, h - 1);
+    ctx.lineTo(w / 2 + 6, h - 1);
+    ctx.lineTo(w / 2, h + 9);
+    ctx.closePath();
+    ctx.fillStyle = 'rgba(19,21,15,0.95)';
+    ctx.fill();
+    ctx.strokeStyle = accent;
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    ctx.fillStyle = '#f0ecd8';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    for (let i = 0; i < lines.length; i++) {
+        ctx.fillText(lines[i], w / 2, 6 + lineH * i + lineH / 2);
+    }
+    ctx.textBaseline = 'alphabetic';
+    ctx.restore();
+}
+
 function draw() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
@@ -713,6 +1005,17 @@ function draw() {
         ctx.stroke();
     }
 
+    if (holes.length) {
+        ctx.save();
+        ctx.globalCompositeOperation = 'destination-out';
+        for (const h of holes) {
+            ctx.beginPath();
+            ctx.arc(h.x, h.y, h.r, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        ctx.restore();
+    }
+
     if (powerup) {
         const meta = POWERUP_META[powerup.type];
         const pulse = 3 * Math.sin(Date.now() / 150);
@@ -731,6 +1034,31 @@ function draw() {
     }
 
     for (const b of bullets) {
+        if (b.laser) {
+            const len = Math.hypot(b.vx, b.vy) || 1;
+            const tx = b.x - (b.vx / len) * 26;
+            const ty = b.y - (b.vy / len) * 26;
+            ctx.lineCap = 'round';
+            ctx.strokeStyle = 'rgba(255,23,68,0.35)';
+            ctx.lineWidth = 12;
+            ctx.beginPath();
+            ctx.moveTo(tx, ty);
+            ctx.lineTo(b.x, b.y);
+            ctx.stroke();
+            ctx.strokeStyle = '#ff1744';
+            ctx.lineWidth = 5;
+            ctx.beginPath();
+            ctx.moveTo(tx, ty);
+            ctx.lineTo(b.x, b.y);
+            ctx.stroke();
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(tx, ty);
+            ctx.lineTo(b.x, b.y);
+            ctx.stroke();
+            continue;
+        }
         ctx.fillStyle = b.hot ? '#ffd600' : '#fff';
         ctx.beginPath();
         ctx.arc(b.x, b.y, b.hot ? 5 : 4, 0, Math.PI * 2);
@@ -783,6 +1111,11 @@ function draw() {
             ctx.textBaseline = 'middle';
             ctx.fillText(meta.label, p.x, starY - 11);
             ctx.textBaseline = 'alphabetic';
+        }
+
+        if (p.taunt && tauntAnims[id]) {
+            const age = (performance.now() - tauntAnims[id].start) / 1000;
+            drawTauntBubble(p, p.taunt.text, age);
         }
     }
 
