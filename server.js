@@ -177,11 +177,27 @@ let powerup = null; // { x, y, type }
 let nextPowerupAt = 0;
 
 function circleRectCollide(cx, cy, r, rect) {
-  const closestX = Math.max(rect.x, Math.min(cx, rect.x + rect.w));
-  const closestY = Math.max(rect.y, Math.min(cy, rect.y + rect.h));
-  const dx = cx - closestX;
-  const dy = cy - closestY;
-  return dx * dx + dy * dy < r * r;
+    const closestX = Math.max(rect.x, Math.min(cx, rect.x + rect.w));
+    const closestY = Math.max(rect.y, Math.min(cy, rect.y + rect.h));
+    const dx = cx - closestX;
+    const dy = cy - closestY;
+    return dx * dx + dy * dy < r * r;
+}
+
+// Two tanks are solid to each other: a move that would put the tank's center
+// within two radii of a live enemy is rejected. Checked per axis so tanks
+// slide around each other instead of overlapping.
+function tankBlocked(x, y, selfId) {
+    const minDistSq = (TANK_R * 2) * (TANK_R * 2);
+    for (const id in players) {
+        if (id === selfId) continue;
+        const other = players[id];
+        if (!other.alive) continue;
+        const dx = x - other.x;
+        const dy = y - other.y;
+        if (dx * dx + dy * dy < minDistSq) return true;
+    }
+    return false;
 }
 
 function pointInHole(x, y) {
@@ -376,6 +392,7 @@ function tick() {
   for (const id in players) {
     const p = players[id];
     if (!p.alive) continue;
+    if (!p.design.name) continue; // a callsign is required before you can play
 
     if (p.buff && now >= p.buff.expiresAt) p.buff = null;
     const buffType = p.buff ? p.buff.type : null;
@@ -392,10 +409,10 @@ function tick() {
       newX = Math.max(TANK_R, Math.min(ARENA_W - TANK_R, newX));
       newY = Math.max(TANK_R, Math.min(ARENA_H - TANK_R, newY));
 
-      // Resolve each axis separately so a tank pressed into a wall slides along
-      // it instead of jamming. Y uses the possibly-updated X for clean corners.
-      if (!OBSTACLES.some((o) => circleRectCollide(newX, p.y, TANK_R, o))) p.x = newX;
-      if (!OBSTACLES.some((o) => circleRectCollide(p.x, newY, TANK_R, o))) p.y = newY;
+      // Resolve each axis separately so a tank pressed into a wall or another
+      // tank slides along it instead of jamming. Y uses the updated X.
+      if (!OBSTACLES.some((o) => circleRectCollide(newX, p.y, TANK_R, o)) && !tankBlocked(newX, p.y, id)) p.x = newX;
+      if (!OBSTACLES.some((o) => circleRectCollide(p.x, newY, TANK_R, o)) && !tankBlocked(p.x, newY, id)) p.y = newY;
     }
 
     const cooldown = buffType === 'laser' ? LASER_COOLDOWN : buffType === 'rapid' ? RAPID_COOLDOWN : FIRE_COOLDOWN;

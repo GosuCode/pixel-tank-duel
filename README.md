@@ -16,6 +16,7 @@ A top-down 2D local multiplayer tank shooter for 2-4 players. One device hosts t
 - Trash talk: number keys `1`–`7` for preset emotes, `T` (or Enter) to type a message — or tap the on-screen emote/TALK buttons on touch
 - Bullets are destroyed when they hit a wall/obstacle — they do not bounce unless you have the Ricochet power-up (see below)
 - Normal bullets have a fixed range (~400px) and fizzle out mid-air; Ricochet and Laser shots are exempt
+- Tanks are solid to each other and slide around one another instead of overlapping (walls too)
 - Three arena maps (Crossroads, Bunkers, Bastion) — one is picked at random each round, never twice in a row
 - Last tank standing wins the round; if the 60s timer runs out, most kills wins
 - Destroyed tanks erupt in a debris burst with a synthesized boom at the spot they died
@@ -24,7 +25,7 @@ A top-down 2D local multiplayer tank shooter for 2-4 players. One device hosts t
 
 ## Customize your tank
 
-Before a match (and any time mid-game), open the **Armory** with the button or the **G** key. Set a callsign (up to 4 characters), then pick a hull, turret, barrel length and color, and hit **Deploy**. Your callsign shows above your tank and your design is saved in the browser and shared with everyone in the match over WebSockets. Parts are purely cosmetic — they don't change speed, hitbox or damage.
+Before a match (and any time mid-game), open the **Armory** with the button or the **G** key. Set a callsign (required, up to 4 characters), then pick a hull, turret, barrel length and color, and hit **Deploy** — you can't deploy until a callsign is entered. Your callsign shows above your tank and your design is saved in the browser and shared with everyone in the match over WebSockets. Parts are purely cosmetic — they don't change speed, hitbox or damage.
 
 ## Power-ups
 

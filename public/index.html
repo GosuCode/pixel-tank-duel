@@ -297,6 +297,15 @@
         cursor: pointer;
     }
     #garageDone:hover { filter: brightness(1.08); }
+    #garageError {
+        margin: 14px 0 0;
+        text-align: center;
+        font-size: 10px;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+        color: var(--red);
+    }
+    #garageError.hidden { display: none; }
     #emoteBar {
         position: fixed;
         left: 50%;
@@ -412,6 +421,7 @@
             <div id="garageControls"></div>
         </div>
         <button id="garageDone">Deploy</button>
+        <p id="garageError" class="hidden">Enter a callsign to deploy</p>
     </div>
 </div>
 
@@ -483,6 +493,22 @@ design.name = sanitizeName(design.name);
 const garageEl = document.getElementById('garage');
 const previewCtx = document.getElementById('preview').getContext('2d');
 const garageControls = document.getElementById('garageControls');
+const garageDoneEl = document.getElementById('garageDone');
+const garageErrorEl = document.getElementById('garageError');
+let nameInputEl = null;
+
+// A callsign is required to deploy. Keep the hint visible while the field is
+// empty and focus it on a blocked deploy so the fix is obvious.
+function refreshDeployState() {
+    if (design.name) garageErrorEl.classList.add('hidden');
+    else garageErrorEl.classList.remove('hidden');
+}
+function openGarage() {
+    garageEl.classList.remove('hidden');
+    drawPreview();
+    refreshDeployState();
+    if (!design.name && nameInputEl) nameInputEl.focus();
+}
 
 function shade(hex, factor) {
     const n = parseInt(hex.slice(1), 16);
@@ -608,16 +634,18 @@ function buildGarage() {
     nameInput.className = 'garageName';
     nameInput.maxLength = 4;
     nameInput.value = design.name || '';
-    nameInput.placeholder = '4 CHARS';
+    nameInput.placeholder = 'REQUIRED';
     nameInput.autocomplete = 'off';
     nameInput.spellcheck = false;
     nameInput.oninput = () => {
         design.name = sanitizeName(nameInput.value);
         if (nameInput.value !== design.name) nameInput.value = design.name;
+        refreshDeployState();
         sendDesign();
     };
     nameRow.appendChild(nameInput);
     garageControls.appendChild(nameRow);
+    nameInputEl = nameInput;
 
     for (const key of Object.keys(PART_LABELS)) {
         const row = document.createElement('div');
@@ -658,6 +686,7 @@ function buildGarage() {
     row.appendChild(opts);
     garageControls.appendChild(row);
     drawPreview();
+    refreshDeployState();
 }
 
 function applyCatalog(data) {
@@ -675,9 +704,16 @@ function sendDesign() {
     if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'design', design }));
 }
 
-document.getElementById('garageDone').onclick = () => garageEl.classList.add('hidden');
-document.getElementById('customizeBtn').onclick = () => { garageEl.classList.remove('hidden'); drawPreview(); };
-window.addEventListener('keydown', (e) => { if (e.key.toLowerCase() === 'g') { garageEl.classList.remove('hidden'); drawPreview(); } });
+garageDoneEl.onclick = () => {
+    if (!design.name) {
+        garageErrorEl.classList.remove('hidden');
+        if (nameInputEl) nameInputEl.focus();
+        return;
+    }
+    garageEl.classList.add('hidden');
+};
+document.getElementById('customizeBtn').onclick = openGarage;
+window.addEventListener('keydown', (e) => { if (e.key.toLowerCase() === 'g') openGarage(); });
 
 // ---- Trash talk: audio ----
 let audioCtx = null;
