@@ -369,6 +369,14 @@
         text-transform: uppercase;
         color: var(--muted);
     }
+    #hurtVignette {
+        position: fixed;
+        inset: 0;
+        z-index: 30;
+        pointer-events: none;
+        opacity: 0;
+        background: radial-gradient(120% 120% at 50% 50%, rgba(0,0,0,0) 42%, rgba(193,75,50,0.6) 100%);
+    }
     #emoteBar {
         position: fixed;
         left: 50%;
@@ -480,6 +488,7 @@
         <p class="scoreHint">Hold Tab</p>
     </div>
 </div>
+<div id="hurtVignette"></div>
 <div id="moveStick" class="stick"><div class="knob"></div></div>
 <div id="aimStick" class="stick"><div class="knob"></div></div>
 <div id="fireBtn">Fire</div>
@@ -513,6 +522,7 @@ const bannerEl = document.getElementById('banner');
 const scoreboardEl = document.getElementById('scoreboard');
 const scoreTitleEl = document.getElementById('scoreTitle');
 const scoreBodyEl = document.getElementById('scoreBody');
+const hurtVignetteEl = document.getElementById('hurtVignette');
 
 const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
 const ws = new WebSocket(`${protocol}//${location.host}`);
@@ -548,6 +558,12 @@ const seenBooms = new Set(); // explosion ids already reacted to
 const boomAnims = {}; // explosion id -> { start, x, y, color, seed }
 const lastHp = {}; // playerId -> last seen hp (to trigger the hit flash)
 const hitFlash = {}; // playerId -> performance.now() of last damage
+const seenHits = new Set(); // hit-event ids already reacted to
+const damageNumbers = []; // { x, y, text, color, start }
+let hitMark = { start: 0, kill: false }; // shooter hitmarker
+let hurtFlashAt = 0; // performance.now() when we last took damage
+let shakeUntil = 0; // screen shake window
+let shakeMag = 0;
 let chatOpen = false;
 
 const POWERUP_META = {
@@ -930,6 +946,26 @@ function playExplosionSound(seed) {
     sweep(140 + (seed % 4) * 12, 38, t, 0.4, 'sine', 0.32);
 }
 
+// Hit feedback: a hit you land, a kill, an absorbed shot, or taking damage.
+function playHitSound(kind) {
+    ensureAudio();
+    if (!audioCtx) return;
+    const t = audioCtx.currentTime + 0.005;
+    if (kind === 'confirm') {
+        tone(1250, t, 0.05, 'square', 0.09);
+        tone(1750, t + 0.035, 0.05, 'square', 0.07);
+    } else if (kind === 'kill') {
+        tone(900, t, 0.05, 'square', 0.1);
+        tone(1350, t + 0.045, 0.06, 'square', 0.1);
+        tone(1900, t + 0.1, 0.09, 'square', 0.09);
+    } else if (kind === 'absorb') {
+        sweep(1800, 900, t, 0.09, 'square', 0.09); // metallic tink
+    } else if (kind === 'hurt') {
+        sweep(240, 80, t, 0.22, 'sawtooth', 0.2);
+        tone(70, t, 0.2, 'sine', 0.18);
+    }
+}
+
 // ---- Trash talk: UI ----
 const emoteBarEl = document.getElementById('emoteBar');
 for (const e of EMOTES) {
@@ -1170,6 +1206,32 @@ ws.onmessage = (event) => {
         const liveBooms = new Set(explosions.map((e) => e.id));
         for (const id of seenBooms) if (!liveBooms.has(id)) seenBooms.delete(id);
         for (const id in boomAnims) if (!liveBooms.has(Number(id))) delete boomAnims[id];
+
+        const hitsIn = data.hitEvents || [];
+        for (const h of hitsIn) {
+            if (seenHits.has(h.id)) continue;
+            seenHits.add(h.id);
+            const victim = players[h.target];
+            const color = (victim && victim.design && victim.design.color) || '#e0a938';
+            if (h.by === myId) {
+                hitMark = { start: performance.now(), kill: h.kind === 'kill' };
+                playHitSound(h.kind === 'kill' ? 'kill' : h.kind === 'absorbed' ? 'absorb' : 'confirm');
+            }
+            if (h.target === myId) {
+                hurtFlashAt = performance.now();
+                shakeUntil = performance.now() + 180;
+                shakeMag = h.kind === 'kill' ? 6 : 4;
+                playHitSound('hurt');
+            }
+            damageNumbers.push({
+                x: h.x, y: h.y, start: performance.now(),
+                text: h.kind === 'absorbed' ? 'BLOCK' : '-1',
+                color: h.kind === 'absorbed' ? '#7FDBFF' : color,
+            });
+        }
+        const liveHits = new Set(hitsIn.map((e) => e.id));
+        for (const id of seenHits) if (!liveHits.has(id)) seenHits.delete(id);
+
         powerup = data.powerup;
         powerupNext = data.powerupNext || null;
         if (data.match) matchInfo = data.match;
@@ -1346,6 +1408,21 @@ function drawExplosion(anim, age) {
 function draw() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
+    // screen shake when we take a hit
+    const nowMs = performance.now();
+    let shakeX = 0, shakeY = 0;
+    if (nowMs < shakeUntil) {
+        const k = (shakeUntil - nowMs) / 180;
+        shakeX = (Math.random() - 0.5) * 2 * shakeMag * k;
+        shakeY = (Math.random() - 0.5) * 2 * shakeMag * k;
+    }
+    ctx.save();
+    ctx.translate(shakeX, shakeY);
+
+    // red edge vignette while the hurt flash is fresh
+    const hurtAge = nowMs - hurtFlashAt;
+    hurtVignetteEl.style.opacity = hurtAge < 400 ? String(Math.max(0, 1 - hurtAge / 400) * 0.9) : '0';
+
     ctx.strokeStyle = 'rgba(127,138,82,0.07)';
     ctx.lineWidth = 1;
     const grid = 40;
@@ -1493,6 +1570,25 @@ function draw() {
             ctx.stroke();
             ctx.restore();
         }
+
+        // hitmarker: four ticks around your tank when a shot connects
+        const hmAge = performance.now() - hitMark.start;
+        if (hmAge < 140) {
+            const k = 1 - hmAge / 140;
+            const r1 = 25 + (1 - k) * 7;
+            const r2 = r1 + 8;
+            ctx.save();
+            ctx.globalAlpha = k;
+            ctx.strokeStyle = hitMark.kill ? '#ffd600' : '#ffffff';
+            ctx.lineWidth = hitMark.kill ? 3 : 2;
+            for (const a of [Math.PI / 4, (3 * Math.PI) / 4, (5 * Math.PI) / 4, (7 * Math.PI) / 4]) {
+                ctx.beginPath();
+                ctx.moveTo(mine.x + Math.cos(a) * r1, mine.y + Math.sin(a) * r1);
+                ctx.lineTo(mine.x + Math.cos(a) * r2, mine.y + Math.sin(a) * r2);
+                ctx.stroke();
+            }
+            ctx.restore();
+        }
     }
 
     for (const id in players) {
@@ -1611,6 +1707,24 @@ function draw() {
         drawExplosion(anim, (performance.now() - anim.start) / 1000);
     }
 
+    // floating damage numbers
+    for (let i = damageNumbers.length - 1; i >= 0; i--) {
+        const dn = damageNumbers[i];
+        const age = (performance.now() - dn.start) / 1000;
+        if (age > 0.7) { damageNumbers.splice(i, 1); continue; }
+        const y = dn.y - 30 - age * 26;
+        ctx.globalAlpha = 1 - age / 0.7;
+        ctx.font = 'bold 13px ui-monospace, monospace';
+        ctx.textAlign = 'center';
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = 'rgba(0,0,0,0.8)';
+        ctx.strokeText(dn.text, dn.x, y);
+        ctx.fillStyle = dn.color;
+        ctx.fillText(dn.text, dn.x, y);
+        ctx.globalAlpha = 1;
+    }
+
+    ctx.restore();
     requestAnimationFrame(draw);
 }
 draw();

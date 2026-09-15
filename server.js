@@ -35,7 +35,7 @@ const POWERUP_TYPES = ['speed', 'rapid', 'triple', 'ricochet', 'shield', 'laser'
 const POWERUP_R = 14;
 const POWERUP_DURATION = 8000;
 const POWERUP_FIRST_AT = 8000; // first spawn after the round goes live
-const POWERUP_INTERVAL = 16000; // then one every interval, fixed spots/types
+const POWERUP_INTERVAL = 9000; // then one every interval, fixed spots/types
 const SPEED_MULT = 1.7;
 const RAPID_COOLDOWN = 240;
 const TRIPLE_SPREAD = 0.26; // radians, ~15 degrees
@@ -48,6 +48,7 @@ const TAUNT_MAX_LEN = 40;
 const TAUNT_COOLDOWN = 1200; // ms between a player's taunts
 const TAUNT_DURATION = 3200; // ms a speech bubble stays up
 const EXPLOSION_DURATION = 900; // ms a wreck stays in the state feed
+const HIT_EVENT_DURATION = 350; // ms a hit marker stays in the state feed
 
 // Kept deliberately short - this is a friends-on-the-LAN game, not a chat app.
 const PROFANITY = ['fuck', 'shit', 'bitch', 'cunt', 'asshole', 'dick', 'pussy', 'fag', 'nigger', 'retard'];
@@ -189,6 +190,8 @@ let bullets = []; // { x,y,vx,vy,ownerId,bounces,bounceLimit,bornAt,hot,laser,hi
 let holes = []; // { x,y,r } permanent tunnels punched through walls by lasers (reset each round)
 let explosions = []; // { id,x,y,color,at } wreck markers, pruned after EXPLOSION_DURATION
 let explosionSeq = 0;
+let hitEvents = []; // { id,x,y,by,target,kind,at } hit feedback, pruned after HIT_EVENT_DURATION
+let hitSeq = 0;
 
 let round = {
   state: 'waiting', // waiting | countdown | active | sudden | ended
@@ -250,15 +253,16 @@ function addHole(x, y) {
 
 // Powerups are a contested objective, not a lottery: fixed per-map spots and a
 // fixed type order on a fixed clock, so the plan is identical every round.
+// One entry per type so every powerup appears over a round.
 function buildPowerupPlan(startAt) {
   const plan = [];
-  for (let i = 0; i < 4; i++) {
+  for (let i = 0; i < POWERUP_TYPES.length; i++) {
     const spot = POWERUP_SPOTS[i % POWERUP_SPOTS.length];
     plan.push({
       at: startAt + POWERUP_FIRST_AT + i * POWERUP_INTERVAL,
       x: spot.x,
       y: spot.y,
-      type: POWERUP_TYPES[i % POWERUP_TYPES.length],
+      type: POWERUP_TYPES[i],
     });
   }
   return plan;
@@ -306,6 +310,7 @@ function startRound() {
   bullets = [];
   holes = [];
   explosions = [];
+  hitEvents = [];
   powerup = null;
 
   const now = Date.now();
@@ -625,10 +630,13 @@ function tick() {
         if (dx * dx + dy * dy < (TANK_R + BULLET_R) * (TANK_R + BULLET_R)) {
           const shooter = players[b.ownerId];
           if (shooter) shooter.hits++;
+          let kind = 'damage';
           if (now < target.spawnProtectedUntil) {
             // spawn protection: the shot is consumed but does no damage
+            kind = 'absorbed';
           } else if (target.buff && target.buff.type === 'shield') {
             target.buff = null; // shield absorbs the hit and shatters
+            kind = 'absorbed';
           } else {
             target.hp -= 1;
             target.lastHitAt = now;
@@ -637,6 +645,7 @@ function tick() {
               target.hp = 0;
               target.alive = false;
               target.deaths += 1;
+              kind = 'kill';
               explosions.push({
                 id: ++explosionSeq,
                 x: target.x,
@@ -647,6 +656,15 @@ function tick() {
               if (shooter && b.ownerId !== id) shooter.kills++;
             }
           }
+          hitEvents.push({
+            id: ++hitSeq,
+            x: b.x,
+            y: b.y,
+            by: b.ownerId,
+            target: id,
+            kind,
+            at: now,
+          });
           if (b.laser) {
             b.hitIds.push(id); // pierce through and keep going
             continue;
@@ -689,6 +707,7 @@ function tick() {
   }
 
   explosions = explosions.filter((e) => now - e.at < EXPLOSION_DURATION);
+  hitEvents = hitEvents.filter((e) => now - e.at < HIT_EVENT_DURATION);
 
   const playersOut = {};
   for (const id in players) {
@@ -726,6 +745,7 @@ function tick() {
     bullets: bullets.map((b) => ({ x: b.x, y: b.y, vx: b.vx, vy: b.vy, hot: b.hot, laser: !!b.laser })),
     holes: holes.map((h) => ({ x: h.x, y: h.y, r: h.r })),
     explosions: explosions.map((e) => ({ id: e.id, x: e.x, y: e.y, color: e.color })),
+    hitEvents: hitEvents.map((e) => ({ id: e.id, x: e.x, y: e.y, by: e.by, target: e.target, kind: e.kind })),
     powerup: powerup ? { x: powerup.x, y: powerup.y, type: powerup.type } : null,
     powerupNext,
     round: {

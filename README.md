@@ -23,6 +23,7 @@ A top-down 2D local multiplayer tank shooter for 2-4 players. One device hosts t
 - Each round starts with a 3-2-1 countdown and brief spawn protection (drops the moment you fire)
 - Last tank standing wins the round; if the 60s timer runs out, most kills wins
 - Tanks have **3 HP** (shown as a segmented bar above each tank) — three hits destroy one; a hit flashes the tank white
+- Hit feedback: landing a shot shows a hitmarker and a hit sound, taking one flashes a red vignette with a low thud and a brief screen shake, and floating `-1`/`BLOCK` numbers mark the impact
 - Destroyed tanks erupt in a debris burst with a synthesized boom at the spot they died
 - Tied on the clock? **Sudden death**: everyone drops to 1 HP and the next kill wins
 - Rounds auto-restart a few seconds after ending; the **match is first to 3 round wins**, then the series resets
@@ -36,7 +37,7 @@ The Armory also has a **Controls** toggle: **Classic** (default) makes the turre
 
 ## Power-ups
 
-Powerups spawn on a fixed clock at fixed spots on each map (first at ~8s, then every ~16s), cycling a fixed type order. The next spawn is announced with a pulsing marker and countdown, so it's a contested objective rather than a lottery. Drive over one to grab an 8-second buff:
+Powerups spawn on a fixed clock at fixed spots on each map (first at ~8s, then every ~9s), cycling through every type in a fixed order. The next spawn is announced with a pulsing marker and countdown, so it's a contested objective rather than a lottery. Drive over one to grab an 8-second buff:
 
 | Power | Icon | Effect |
 | --- | --- | --- |
