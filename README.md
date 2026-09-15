@@ -2,6 +2,16 @@
 
 A top-down 2D local multiplayer tank shooter for 2-4 players. One device hosts the game over local Wi-Fi; everyone else joins from a browser (phone, laptop, tablet) — no internet required.
 
+## Screenshots
+
+| Starting screen | Gameplay |
+| --- | --- |
+| ![Starting screen](assets/starting-screen.png) | ![Gameplay](assets/pixel-tank-duel-gameplay.png) |
+
+| Armory | Power-ups |
+| --- | --- |
+| ![Armory](assets/armory.png) | ![Power-ups](assets/power-ups.png) |
+
 ## How it works
 
 - One player runs the server on their machine and it acts as the host.
@@ -158,5 +168,6 @@ including the `deploy/` installer and troubleshooting.
 ```
 server.js          Authoritative game server (Express + ws)
 public/index.html  Client: canvas renderer, input handling, HUD
+assets/            README screenshots
 deploy/            systemd + nginx + UFW + Tailscale setup (see HOSTING.md)
 ```
