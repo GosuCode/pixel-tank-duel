@@ -20,125 +20,26 @@ A top-down 2D local multiplayer tank shooter for 2-4 players. One device hosts t
 
 ## Gameplay
 
-- Move & aim: WASD / Arrow keys (desktop) or the on-screen joystick (touch) — by default the turret points where you drive
-- Independent aim (optional): switch **Controls → Aim** in the Armory to aim with the mouse (desktop) or the right stick (touch)
-- Fire: Spacebar (desktop) or the FIRE button / right stick (touch)
-- Customize tank: Customize button or G key
-- Trash talk: number keys `1`–`7` for preset emotes, `T` (or Enter) to type a message — or tap the on-screen emote/TALK buttons on touch
-- Scoreboard: hold `Tab` (wins, kills, deaths, damage, accuracy)
-- Bullets are destroyed when they hit a wall/obstacle — they do not bounce unless you have the Ricochet power-up (see below)
-- Normal bullets have a fixed range (~400px) and fizzle out mid-air; Ricochet and Laser shots are exempt
-- Tanks are solid to each other and slide around one another instead of overlapping (walls too)
-- Three arena maps (Crossroads, Bunkers, Bastion) — one is picked at random each round, never twice in a row
-- Each round starts with a 3-2-1 countdown and brief spawn protection (drops the moment you fire)
-- Last tank standing wins the round; if the 60s timer runs out, most kills wins
-- Tanks have **3 HP** (shown as a segmented bar above each tank) — three hits destroy one; a hit flashes the tank white
-- Hit feedback: landing a shot shows a hitmarker and a hit sound, taking one flashes a red vignette with a low thud and a brief screen shake, and floating `-1`/`BLOCK` numbers mark the impact
-- Destroyed tanks erupt in a debris burst with a synthesized boom at the spot they died
-- Tied on the clock? **Sudden death**: everyone drops to 1 HP and the next kill wins
-- Rounds auto-restart a few seconds after ending; the **match is first to 3 round wins**, then the series resets
-- Max 4 players per game
+- Move with `WASD` / arrow keys (or the on-screen joystick); fire with `Space` (or the FIRE button). Optional independent aim via **Controls → Aim**.
+- Customize your tank from the **Armory** (**Customize** button or `G`).
+- Trash talk with `1`–`7` emotes or `T`/Enter to type; hold `Tab` for the scoreboard.
+- Each round opens with a 3-2-1 countdown and 1.2 s spawn protection. Tanks have **3 HP**.
+- Last tank standing wins; on the 60 s timer, most kills wins; a tie goes to sudden death.
+- The match is **first to 3 round wins**. Max 4 players.
+
+Full controls, maps, power-ups, bullets/collisions and feedback: **[docs/GAMEPLAY.md](docs/GAMEPLAY.md)**.
 
 ## Customize your tank
 
-Before a match (and any time mid-game), open the **Armory** with the button or the **G** key. Set a callsign (required, up to 4 characters), then pick a hull, turret, barrel length and color, and hit **Deploy** — you can't deploy until a callsign is entered. Your callsign shows above your tank and your design is saved in the browser and shared with everyone in the match over WebSockets. Parts are purely cosmetic — they don't change speed, hitbox or damage.
+Before a match (and any time mid-game), open the **Armory**. Set a callsign (required, up to 4 characters), then pick a hull, turret, barrel length and color, and hit **Deploy** — you can't deploy until a callsign is entered. Your callsign shows above your tank and your design is saved in the browser and shared with everyone in the match over WebSockets. Parts are purely cosmetic — they don't change speed, hitbox or damage.
 
 The Armory also has a **Controls** toggle: **Classic** (default) makes the turret point wherever you drive and keeps the touch FIRE button, while **Aim** gives you an independent turret (mouse on desktop, right aim-stick on touch).
 
-## Power-ups
+## Systems
 
-Powerups spawn on a fixed clock at fixed spots on each map (first at ~8s, then every ~9s), cycling through every type in a fixed order. The next spawn is announced with a pulsing marker and countdown, so it's a contested objective rather than a lottery. Drive over one to grab an 8-second buff:
-
-| Power | Icon | Effect |
-| --- | --- | --- |
-| Speed Boost | S (cyan) | Move speed up ~70% |
-| Rapid Fire | F (orange) | Fire cooldown cut way down |
-| Triple Shot | T (purple) | Fires a 3-bullet spread instead of 1 |
-| Ricochet | R (yellow) | Bullets survive 3 wall bounces instead of being destroyed on impact — rendered as bigger gold bullets, and not subject to the normal bullet range limit |
-| Energy Shield | B (blue) | Absorbs the next bullet hit (including ricochets/spread shots), then shatters |
-| Laser | L (red) | Fires a fast beam that pierces walls and every tank in its path, hitting each enemy once (never its owner). Each wall it passes through keeps a permanent hole for the rest of the round — normal bullets can fly through the holes, but tanks are still blocked |
-
-Your active buff shows as a badge above your tank and a countdown chip in the HUD.
-
-## Trash talk
-
-Every tank can talk smack. A message pops up in a speech bubble above the sender, wobbles for a moment, and plays a synthesized sound (no audio files — generated with the Web Audio API).
-
-- **Emotes:** number keys `1`–`7` (`GG`, `REKT`, `NICE!`, `LOL`, `EZ`, `OOPS`, `HeHeHe...`), or tap the emote buttons on the touch bar. Each emote has its own tune.
-- **Free text:** press `T` (or Enter) to open the chat bar, type up to 40 characters and hit Enter. On phones, tap **TALK**.
-- Messages are sanitized server-side (control characters stripped, length capped, a light profanity filter applied) and rate-limited to one taunt per ~1.2s, so a hacked client can't spam or inject. Bubbles fade out after ~3s and clear at the start of each round.
-
-## Bolt economy & The Forge
-
-Earn ⚡ by fighting:
-
-| Action | Bolts |
-| --- | --- |
-| Kill | +3 |
-| First blood (first kill of a round) | +2 bonus |
-| Round win | +5 |
-| Match win (first to 3) | +15 |
-| Accuracy ≥60% (round end) | +2 |
-| Survival — zero deaths that round | +3 |
-| Streak bonus (consecutive kills) | +1 per kill, up to +3/kill |
-
-Lose ⚡ by dying:
-
-| Event | Bolts |
-| --- | --- |
-| Death | −2 |
-| Round loss | −3 |
-| Match loss | −8 |
-| Rage quit (mid-round disconnect) | −15 (also clears streak) |
-
-**The Forge** (press **F** or tap ⚡ in the Garage) — spend earned bolts on cosmetic and consumable upgrades:
-
-| Category | Item | Cost |
-| --- | --- | --- |
-| Skin | Neon Chrome | 100 |
-| Skin | Ghost | 80 |
-| Skin | Ember | 120 |
-| Trail | Fire Trail | 60 |
-| Trail | Rainbow | 90 |
-| Trail | Spark | 50 |
-| Trail | Smoke | 40 |
-| Boom | Confetti | 70 |
-| Boom | Skull | 90 |
-| Boom | Comets | 110 |
-| Spawn | Teleport | 50 |
-| Spawn | Skydrop | 60 |
-| Spawn | Smoke Puff | 40 |
-| Consumable | Map Vote | 15 (choose the next map) |
-| Consumable | Haunt Shield | 20 (blocks the next haunt) |
-
-Consumables are one-at-a-time: buy, use, then buy again.
-
-**Streak skins** unlock automatically at win thresholds and are equipped over any chosen skin:
-
-| Wins | Skin | Look |
-| --- | --- | --- |
-| 3 | Scarred | paint scratches |
-| 5 | Golden | metallic gold accent |
-| 10 | Phantom | semi-transparent ghost |
-| 25 | Titanium | silver + dark glass + spinning bolt badge |
-
-## Haunt system
-
-Losing stacks haunt levels (1–5), cleared on a round win or a kill. Effects are **self-inflicted and client-side only** — no network spam, no impact on other players.
-
-| Level | Cumulative losses | Effect |
-| --- | --- | --- |
-| 1 | 1 | Title taunts ("REKT", "GIT GUD"…) |
-| 2 | 3 | Random beeps + 3 s screen blur |
-| 3 | 5 | Browser window shrinks + lateral controls scramble for 10 s |
-| 4 | 7 | Notification spam ×4 + screen inversion for 3 s |
-| 5 | 9 | All above + webcam request |
-
-Buy a **Haunt Shield** in The Forge (20 ⚡) to block the next haunt. Win a round or land a kill to clear your streak.
-
-## Persistence
-
-All bolt balances, owned cosmetics, win/loss records and streaks are stored server-side at `data/players.json` (auto-created on first use, one entry per callsign). Data survives server restarts.
+- **Bolt economy & The Forge** — earn ⚡ in battle, spend it on cosmetics and consumables. See **[docs/ECONOMY.md](docs/ECONOMY.md)**.
+- **Haunts** — keep losing and your own browser fights back. See **[docs/HAUNTS.md](docs/HAUNTS.md)**.
+- **Persistence** — progress is tied to a device token in `localStorage`, so there's no login. See **[docs/ECONOMY.md#persistence](docs/ECONOMY.md#persistence)**.
 
 ## Run it
 
@@ -242,6 +143,7 @@ including the `deploy/` installer and troubleshooting.
 server.js          Authoritative game server (Express + ws)
 public/index.html  Client: canvas renderer, input handling, HUD
 data/              Persisted player banks (players.json, auto-created)
+docs/              Gameplay, economy and haunt documentation
 assets/            README screenshots
 deploy/            systemd + nginx + UFW + Tailscale setup (see HOSTING.md)
 ```

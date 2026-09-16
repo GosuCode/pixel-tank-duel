@@ -654,7 +654,28 @@ const boltsEl = document.getElementById('myBolts');
 const hauntTagEl = document.getElementById('hauntTag');
 
 const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+
+// Device identity: a random secret kept in localStorage. The server keys your
+// bolt bank to it, so progress persists with no login. Clearing site data or
+// switching devices starts a fresh identity.
+let deviceToken = localStorage.getItem('tankToken');
+if (!deviceToken) {
+    if (window.crypto && crypto.randomUUID) {
+        deviceToken = crypto.randomUUID();
+    } else if (window.crypto && crypto.getRandomValues) {
+        const buf = new Uint8Array(16);
+        crypto.getRandomValues(buf);
+        deviceToken = Array.from(buf, (x) => x.toString(16).padStart(2, '0')).join('');
+    } else {
+        deviceToken = Date.now().toString(36) + Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+    }
+    localStorage.setItem('tankToken', deviceToken);
+}
+
 const ws = new WebSocket(`${protocol}//${location.host}`);
+ws.addEventListener('open', () => {
+    if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'auth', token: deviceToken }));
+});
 
 let myId = null;
 let players = {};

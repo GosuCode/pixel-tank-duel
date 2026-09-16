@@ -74,7 +74,7 @@ const HAUNT_IMMUNITY_COST = 20;
 const ACCURATE_THRESHOLD = 0.6;
 
 const BANK_FILE = path.join(__dirname, 'data', 'players.json');
-let bank = {}; // callsign -> { bolts, owned:[itemId], wins, losses, streak, best, bought:{} }
+let bank = {}; // device token -> { bolts, owned:[itemId], wins, losses, streak, best, bought:{} }
 try {
   bank = JSON.parse(fs.readFileSync(BANK_FILE, 'utf8'));
 } catch {}
@@ -167,6 +167,14 @@ function sanitizeName(value, fallback) {
   return raw.replace(/[^\w -]/g, '').trim().slice(0, 4);
 }
 
+// Device token: an opaque secret the client keeps in localStorage. It is the
+// bank identity, so no login is needed — but it must never be logged or echoed.
+function sanitizeToken(value) {
+  if (typeof value !== 'string') return '';
+  const raw = value.replace(/[^A-Za-z0-9_-]/g, '').slice(0, 64);
+  return raw.length >= 8 ? raw : '';
+}
+
 function sanitizeTaunt(value) {
   let raw = typeof value === 'string' ? value : '';
   // strip control chars, collapse whitespace
@@ -215,26 +223,54 @@ function displayName(p) {
 }
 
 // ---- Bolt bank + haunts ----
-function bankOf(p) {
-  const name = (p.design && p.design.name) || '';
-  if (!name) return null;
-  if (!bank[name]) {
-    bank[name] = { bolts: START_BOLTS, owned: [], wins: 0, losses: 0, streak: 0, best: 0, bought: {} };
-    saveBank();
-  }
-  return bank[name];
+// Entries are keyed by a per-device token (kept in the client's localStorage),
+// so progress persists with no login. Legacy entries keyed by callsign are
+// adopted once on first connect — see claimLegacyBank.
+function bankKey(p) {
+  if (p.token) return p.token;
+  return (p.design && p.design.name) || '';
 }
 
-function credit(name, amount) {
-  const b = (name && bank[name]) || null;
+function bankOf(p, create = true) {
+  const key = bankKey(p);
+  if (!key) return null;
+  if (!bank[key]) {
+    if (!create) return null;
+    bank[key] = { bolts: START_BOLTS, owned: [], wins: 0, losses: 0, streak: 0, best: 0, bought: {} };
+    saveBank();
+  }
+  return bank[key];
+}
+
+function loadBankIntoPlayer(p, b) {
+  if (!b) return;
+  p.bolts = b.bolts; p.owned = b.owned; p.bought = b.bought;
+  p.wins = b.wins; p.losses = b.losses; p.streak = b.streak; p.best = b.best;
+}
+
+function claimLegacyBank(p, name) {
+  // one-time adoption of a pre-device-token bank keyed by callsign
+  if (!p.token || !name || bank[p.token]) return;
+  const legacy = bank[name];
+  if (legacy && !legacy.device) {
+    bank[p.token] = legacy;
+    legacy.device = true;
+    delete bank[name];
+    loadBankIntoPlayer(p, legacy);
+    saveBank();
+  }
+}
+
+function credit(p, amount) {
+  const b = bankOf(p);
   if (!b) return 0;
   b.bolts += amount;
   saveBank();
   return b.bolts;
 }
 
-function debit(name, amount) {
-  const b = (name && bank[name]) || null;
+function debit(p, amount) {
+  const b = bankOf(p);
   if (!b) return 0;
   b.bolts = Math.max(0, b.bolts - amount);
   saveBank();
@@ -244,7 +280,7 @@ function debit(name, amount) {
 function sendBank(p, msg) {
   try {
     if (!p || !p.ws || p.ws.readyState !== 1) return;
-    const b = bankOf(p);
+    const b = bankOf(p, false);
     if (b) p.ws.send(JSON.stringify({ type: 'bank', bolts: p.bolts, owned: b.owned, bought: b.bought,
       streak: Math.max(p.streak, 0), wins: b.wins, losses: b.losses, best: b.best,
       hauntLevel: p.hauntLevel, streakSkins: WIN_STREAK_SKINS.filter((s) => p.best >= s.at).map((s) => s.id),
@@ -533,20 +569,20 @@ function endRound(winnerId, winnerText) {
     }
 
     if (earned > 0) {
-      p.bolts = credit(p.design.name, earned);
+      p.bolts = credit(p, earned);
       sendBank(p, { type: 'round', amount: earned, win: isWin });
     } else if (earned < 0) {
-      p.bolts = debit(p.design.name, -earned);
+      p.bolts = debit(p, -earned);
       sendBank(p, { type: 'round', amount: earned, win: false });
     }
 
     // match settlement on top of the round settlement
     if (winner && match.over && winnerId) {
       if (id === winnerId) {
-        p.bolts = credit(p.design.name, MATCH_WIN_BOLTS);
+        p.bolts = credit(p, MATCH_WIN_BOLTS);
         sendBank(p, { type: 'match', amount: MATCH_WIN_BOLTS, win: true });
       } else {
-        p.bolts = debit(p.design.name, MATCH_LOSS_TAX);
+        p.bolts = debit(p, MATCH_LOSS_TAX);
         sendBank(p, { type: 'match', amount: -MATCH_LOSS_TAX, win: false });
       }
     }
@@ -582,14 +618,8 @@ wss.on('connection', (ws) => {
   const freeColor = TANK_COLORS.find((c) => !usedColors.has(c.hex));
   const design = defaultDesign(index, freeColor && freeColor.hex);
 
-  const bankStart = (() => {
-    const b = bank[design.name];
-    if (b) return { bolts: b.bolts, owned: b.owned, bought: b.bought, wins: b.wins, losses: b.losses,
-      streak: b.streak, best: b.best };
-    return null;
-  })();
-
   players[id] = {
+    token: null,
     x: spawn.x,
     y: spawn.y,
     angle: 0,
@@ -615,13 +645,13 @@ wss.on('connection', (ws) => {
     hits: 0,
     powerups: 0,
     // bolt economy + haunt state (server-side per match, backed by bank store)
-    bolts: bankStart ? bankStart.bolts : START_BOLTS,
-    owned: bankStart ? bankStart.owned : [],
-    bought: bankStart ? bankStart.bought : {},
-    wins: bankStart ? bankStart.wins : 0,
-    losses: bankStart ? bankStart.losses : 0,
-    streak: bankStart ? bankStart.streak : 0,
-    best: bankStart ? bankStart.best : 0,
+    bolts: START_BOLTS,
+    owned: [],
+    bought: {},
+    wins: 0,
+    losses: 0,
+    streak: 0,
+    best: 0,
     hauntLevel: 0,
     lossStreak: 0,
     killStreak: 0,
@@ -645,7 +675,6 @@ wss.on('connection', (ws) => {
     shop: SHOP_ITEMS.map((i) => ({ id: i.id, cat: i.cat, name: i.name, cost: i.cost, color: i.color, desc: i.desc })),
     streakSkins: WIN_STREAK_SKINS.map((s) => ({ id: s.id, at: s.at, name: s.name, desc: s.desc })),
   }));
-  sendBank(players[id]);
 
   // joining mid-round: grant the same spawn protection so you can't be sniped on entry
   if (round.state === 'active' || round.state === 'sudden') {
@@ -671,33 +700,21 @@ wss.on('connection', (ws) => {
       // aiming along their movement direction.
       p.aimControlled = typeof data.aim === 'number' && Number.isFinite(data.aim);
       if (p.aimControlled) p.aim = data.aim;
-    } else if (data.type === 'design') {
-      const before = p.design.name;
-      const ownedBefore = (bankOf(p) || {}).owned || [];
-      p.design = sanitizeDesign(data.design, p.design, ownedBefore);
-      if (before && before !== p.design.name) {
-        // callsign switch: reload the bank + haunt state for the new identity
-        const b = (p.design.name && bank[p.design.name]) || null;
-        p.bolts = b ? b.bolts : START_BOLTS;
-        p.owned = b ? b.owned : [];
-        p.bought = b ? b.bought : {};
-        p.wins = b ? b.wins : 0;
-        p.losses = b ? b.losses : 0;
-        p.streak = b ? b.streak : 0;
-        p.best = b ? b.best : 0;
-        p.hauntLevel = 0;
-        p.lossStreak = 0;
-        sendBank(p, 'callsign changed');
-      } else if (p.design.name && !before) {
-        // first callsign set: hand over the bank state for this identity
-        const b = bankOf(p);
-        if (b) {
-          p.bolts = b.bolts; p.owned = b.owned; p.bought = b.bought;
-          p.wins = b.wins; p.losses = b.losses;
-          p.streak = b.streak; p.best = b.best;
-        }
-        sendBank(p, 'identity set');
+    } else if (data.type === 'auth') {
+      // device token = bank identity; callsign is display-only
+      const tok = sanitizeToken(data.token);
+      if (tok && !p.token) {
+        p.token = tok;
+        loadBankIntoPlayer(p, bankOf(p, false));
+        sendBank(p, 'auth');
       }
+    } else if (data.type === 'design') {
+      const newName = sanitizeName(data.design && data.design.name, p.design.name);
+      claimLegacyBank(p, newName);
+      const b = bankOf(p);
+      p.design = sanitizeDesign(data.design, p.design, (b && b.owned) || []);
+      loadBankIntoPlayer(p, b);
+      sendBank(p, 'design');
     } else if (data.type === 'buy') {
       const item = SHOP_BY_ID[data.itemId];
       const b = bankOf(p);
@@ -779,7 +796,7 @@ wss.on('connection', (ws) => {
       const inPlayStates = round.state === 'countdown' || round.state === 'active' || round.state === 'sudden';
       if (inPlayStates && p.design && p.design.name && !p.rageQuitTaxed) {
         p.rageQuitTaxed = true;
-        debit(p.design.name, RAGE_QUIT_TAX);
+        debit(p, RAGE_QUIT_TAX);
         const b = bankOf(p);
         if (b) { b.streak = 0; b.best = 0; saveBank(); }
         p.streak = 0;
@@ -999,7 +1016,7 @@ function tick() {
                 at: now,
               });
               if (target.design && target.design.name) {
-                target.bolts = debit(target.design.name, DEATH_TAX);
+                target.bolts = debit(target, DEATH_TAX);
                 sendBank(target, { type: 'death', amount: -DEATH_TAX });
               }
               if (shooter && b.ownerId !== id) {
@@ -1011,7 +1028,7 @@ function tick() {
                   shooter.killStreak++;
                   shooter.lossStreak = 0;
                   if (shooter.hauntLevel > 0) shooter.hauntLevel = 0;
-                  shooter.bolts = credit(shooter.design.name, bolts);
+                  shooter.bolts = credit(shooter, bolts);
                   if (bolts > 0) sendBank(shooter, { type: 'kill', amount: bolts, firstBlood: firstBlood > 0 });
                 }
               }
