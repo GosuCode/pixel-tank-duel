@@ -454,12 +454,17 @@ function nextSpawn(index) {
   return SPAWNS[index % SPAWNS.length];
 }
 
+// Spawned tanks face the arena center rather than a fixed direction.
+function spawnAngle(x, y) {
+  return Math.atan2(CY - y, CX - x);
+}
+
 function resetPlayerForRound(p, index) {
   const s = nextSpawn(index);
   p.x = s.x;
   p.y = s.y;
-  p.angle = 0;
-  p.aim = 0;
+  p.angle = spawnAngle(s.x, s.y);
+  p.aim = p.angle;
   p.alive = true;
   p.kills = 0;
   p.buff = null;
@@ -622,8 +627,8 @@ wss.on('connection', (ws) => {
     token: null,
     x: spawn.x,
     y: spawn.y,
-    angle: 0,
-    aim: 0,
+    angle: spawnAngle(spawn.x, spawn.y),
+    aim: spawnAngle(spawn.x, spawn.y),
     aimControlled: false,
     design,
     alive: true,
