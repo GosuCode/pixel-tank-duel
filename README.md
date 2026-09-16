@@ -25,9 +25,18 @@ A top-down 2D local multiplayer tank shooter for 2-4 players. One device hosts t
 - Trash talk with `1`–`7` emotes or `T`/Enter to type; hold `Tab` for the scoreboard.
 - Each round opens with a 3-2-1 countdown and 1.2 s spawn protection. Tanks have **3 HP**.
 - Last tank standing wins; on the 60 s timer, most kills wins; a tie goes to sudden death.
-- The match is **first to 3 round wins**. Max 4 players.
+- The match is **first to 3 round wins**. Max 4 players per game.
 
 Full controls, maps, power-ups, bullets/collisions and feedback: **[docs/GAMEPLAY.md](docs/GAMEPLAY.md)**.
+
+## Rooms
+
+One server hosts many independent games at once. Each game lives in a **room** with a 4-letter code and its own arena, rounds and players — rooms never see each other.
+
+- Open the site with no code and the server mints a room for you; the URL updates to `?room=CODE`.
+- Share that link (or the code) — friends land straight in your game. Join a specific code from **Armory → Room**, or by URL: `http://HOST:3000/?room=CODE`.
+- Each room holds up to **4 players**. When it's full, new arrivals are told to pick another code.
+- Progress is **not** per-room: your bolts, cosmetics and streaks follow your device everywhere.
 
 ## Customize your tank
 
@@ -58,6 +67,8 @@ Server starts on port 3000.
    - **Mac/Linux:** `ifconfig` or `ip a` → look for `192.168.x.x`
 3. On the host machine, open `http://localhost:3000`.
 4. On every other device connected to the **same Wi-Fi**, open `http://YOUR_LOCAL_IP:3000` (e.g. `http://192.168.1.15:3000`).
+
+The first player to connect gets a room code and their URL becomes `http://…/?room=CODE`. Share that exact link with everyone else — they'll join the same room. Up to 4 players per room; different codes run separate games on the same server.
 
 All devices must be on the same local network — this does not work over the open internet without extra setup (see below).
 

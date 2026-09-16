@@ -362,6 +362,23 @@ const MAPS = [
   },
 ];
 
+// ---- Rooms ----
+// Each game runs in its own room with an isolated copy of all game state,
+// addressed by a short code. The bank store above is shared across rooms.
+const rooms = new Map(); // code -> room
+const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no look-alike chars
+function sanitizeRoomCode(v) {
+  return typeof v === 'string' ? v.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4) : '';
+}
+function makeRoomCode() {
+  let c = '';
+  for (let i = 0; i < 4; i++) c += CODE_ALPHABET[Math.floor(Math.random() * CODE_ALPHABET.length)];
+  return rooms.has(c) ? makeRoomCode() : c;
+}
+
+function createRoom(code) {
+const sockets = new Set(); // ws connections currently in this room
+
 let mapIndex = 0;
 let OBSTACLES = MAPS[mapIndex].obstacles;
 let POWERUP_SPOTS = MAPS[mapIndex].powerupSpots;
@@ -486,7 +503,7 @@ function resetPlayerForRound(p, index) {
 
 function broadcastMap() {
   const msg = JSON.stringify({ type: 'map', obstacles: OBSTACLES, name: MAPS[mapIndex].name });
-  wss.clients.forEach((client) => {
+  sockets.forEach((client) => {
     if (client.readyState === 1) client.send(msg);
   });
 }
@@ -608,13 +625,14 @@ function maybeStartRound() {
   }
 }
 
-wss.on('connection', (ws) => {
+function join(ws) {
   if (Object.keys(players).length >= MAX_PLAYERS) {
     ws.send(JSON.stringify({ type: 'full' }));
     ws.close();
     return;
   }
 
+  sockets.add(ws);
   const id = Math.random().toString(36).substring(2, 9);
   const index = Object.keys(players).length;
   const spawn = nextSpawn(index);
@@ -671,6 +689,7 @@ wss.on('connection', (ws) => {
   ws.send(JSON.stringify({
     type: 'init',
     id,
+    roomCode: code,
     arena: { w: ARENA_W, h: ARENA_H },
     obstacles: OBSTACLES,
     mapName: MAPS[mapIndex].name,
@@ -812,12 +831,13 @@ wss.on('connection', (ws) => {
       if (b) { b.streak = p.streak; b.best = p.best; saveBank(); }
     }
     delete players[id];
+    sockets.delete(ws);
     const inPlayStates = round.state === 'countdown' || round.state === 'active' || round.state === 'sudden';
     if (Object.keys(players).length < 2 && inPlayStates) {
       round.state = 'waiting';
     }
   });
-});
+}
 
 function tick() {
   const now = Date.now();
@@ -1151,12 +1171,36 @@ function tick() {
       winnerText: match.winnerText,
     },
   });
-  wss.clients.forEach((client) => {
+  sockets.forEach((client) => {
     if (client.readyState === 1) client.send(state);
   });
 }
 
-setInterval(tick, TICK_MS);
+  return { code, join, tick, isEmpty: () => sockets.size === 0 };
+}
+
+// Pick a room for each new connection (from ?room=CODE) or spin up a fresh one.
+wss.on('connection', (ws, req) => {
+  let code = '';
+  try {
+    code = sanitizeRoomCode(new URL(req.url, 'http://localhost').searchParams.get('room'));
+  } catch (e) {}
+  let room = code ? rooms.get(code) : null;
+  if (!room) {
+    if (!code) code = makeRoomCode();
+    room = createRoom(code);
+    rooms.set(code, room);
+  }
+  room.join(ws);
+});
+
+// One 60Hz loop drives every active room; empty rooms are reaped.
+setInterval(() => {
+  for (const [code, room] of rooms) {
+    room.tick();
+    if (room.isEmpty()) rooms.delete(code);
+  }
+}, TICK_MS);
 
 server.listen(PORT, HOST, () => {
   console.log(`Pixel Tank Duel running on ${HOST}:${PORT}!`);

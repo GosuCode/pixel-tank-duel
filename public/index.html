@@ -74,6 +74,7 @@
     #timer { font-size: 16px; font-weight: 700; color: var(--amber); }
     #status { color: var(--muted); }
     #myBuff { color: var(--amber); }
+    #playerCount { color: var(--text); }
     #banner {
         position: absolute;
         top: 40%;
@@ -590,6 +591,7 @@
         <span id="series"></span>
         <span id="myBuff"></span>
         <span id="myBolts"></span>
+        <span id="playerCount"></span>
     </div>
     <div id="hauntTag"></div>
     <div id="banner"></div>
@@ -651,6 +653,7 @@ const scoreBodyEl = document.getElementById('scoreBody');
 const hurtVignetteEl = document.getElementById('hurtVignette');
 const boltFeedEl = document.getElementById('boltFeed');
 const boltsEl = document.getElementById('myBolts');
+const playerCountEl = document.getElementById('playerCount');
 const hauntTagEl = document.getElementById('hauntTag');
 
 const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -672,7 +675,12 @@ if (!deviceToken) {
     localStorage.setItem('tankToken', deviceToken);
 }
 
-const ws = new WebSocket(`${protocol}//${location.host}`);
+// Room: join the code in ?room=CODE, or let the server mint one on connect.
+const roomParam = (new URLSearchParams(location.search).get('room') || '')
+    .toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4);
+let roomCode = roomParam;
+
+const ws = new WebSocket(`${protocol}//${location.host}/` + (roomParam ? `?room=${roomParam}` : ''));
 ws.addEventListener('open', () => {
     if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'auth', token: deviceToken }));
 });
@@ -686,6 +694,7 @@ let explosions = [];
 let powerup = null;
 let mapName = '';
 let arena = { w: 800, h: 600 };
+const MAX_PLAYERS = 4;
 let roundInfo = { state: 'waiting', timeLeft: 0, winnerText: '' };
 let matchInfo = { targetWins: 3, roundNumber: 0, over: false, winnerText: '' };
 let powerupNext = null;
@@ -929,6 +938,35 @@ function drawPreview() {
 
 function buildGarage() {
     garageControls.innerHTML = '';
+
+    const roomRow = document.createElement('div');
+    roomRow.className = 'garageRow';
+    const roomLabel = document.createElement('span');
+    roomLabel.className = 'garageLabel';
+    roomLabel.textContent = 'Room';
+    roomRow.appendChild(roomLabel);
+    const roomVal = document.createElement('span');
+    roomVal.textContent = roomCode || '----';
+    roomVal.style.color = 'var(--amber)';
+    roomVal.style.letterSpacing = '0.24em';
+    roomRow.appendChild(roomVal);
+    const roomInput = document.createElement('input');
+    roomInput.className = 'garageName';
+    roomInput.maxLength = 4;
+    roomInput.placeholder = 'CODE';
+    roomInput.autocomplete = 'off';
+    roomInput.spellcheck = false;
+    roomInput.style.width = '72px';
+    roomRow.appendChild(roomInput);
+    const roomJoin = document.createElement('button');
+    roomJoin.className = 'garageOpt';
+    roomJoin.textContent = 'Join';
+    roomJoin.onclick = () => {
+        const c = roomInput.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4);
+        if (c && c !== roomCode) location.search = `?room=${c}`;
+    };
+    roomRow.appendChild(roomJoin);
+    garageControls.appendChild(roomRow);
 
     const nameRow = document.createElement('div');
     nameRow.className = 'garageRow';
@@ -1371,6 +1409,11 @@ ws.onmessage = (event) => {
     const data = JSON.parse(event.data);
     if (data.type === 'init') {
         myId = data.id;
+        roomCode = data.roomCode || roomCode || '';
+        if (roomCode && !roomParam) {
+            // remember the minted code in the URL so a refresh rejoins this room
+            try { history.replaceState(null, '', `?room=${roomCode}`); } catch (e) {}
+        }
         arena = data.arena;
         obstacles = data.obstacles;
         mapName = data.mapName || '';
@@ -1420,7 +1463,7 @@ ws.onmessage = (event) => {
         }
         buildForge();
     } else if (data.type === 'full') {
-        bannerEl.textContent = 'Game is full (4/4 players)';
+        bannerEl.textContent = `Room ${roomCode} is full (4/4) — join another code in the Armory`;
     } else if (data.type === 'map') {
         obstacles = data.obstacles;
         mapName = data.name || mapName;
@@ -2406,6 +2449,7 @@ setInterval(() => {
     const total = Object.keys(players).length;
 
     const mine = myId ? players[myId] : null;
+    if (playerCountEl) playerCountEl.textContent = `Players ${total}/${MAX_PLAYERS}`;
     if (boltsEl) {
         const lv = mine ? (mine.hauntLevel || 0) : (bankInfo.hauntLevel || 0);
         boltsEl.classList.toggle('haunted', lv > 0);
