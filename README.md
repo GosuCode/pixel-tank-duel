@@ -33,10 +33,25 @@ Full controls, maps, power-ups, bullets/collisions and feedback: **[docs/GAMEPLA
 
 One server hosts many independent games at once. Each game lives in a **room** with a 4-letter code and its own arena, rounds and players — rooms never see each other.
 
-- Open the site with no code and the server mints a room for you; the URL updates to `?room=CODE`.
-- Share that link (or the code) — friends land straight in your game. Join a specific code from **Armory → Room**, or by URL: `http://HOST:3000/?room=CODE`.
-- Each room holds up to **4 players**. When it's full, new arrivals are told to pick another code.
-- Progress is **not** per-room: your bolts, cosmetics and streaks follow your device everywhere.
+Opening the site lands you in a **lobby**:
+
+- **Create open room** — listed publicly; anyone can see it and join.
+- **Create invite-only** — hidden from the list; only people with the code or link can join.
+- **Join** an open room from the list, or type a code under **Join by code**.
+- A shared link (`http://HOST:3000/?room=CODE`) skips the lobby and drops you straight in.
+
+Each room holds up to **4 players**; full rooms show **Full** and reject new arrivals. A room disappears shortly after everyone leaves. Progress is **not** per-room: your bolts, cosmetics and streaks follow your device everywhere.
+
+### Lobby API
+
+The lobby talks to the server over plain HTTP; the game itself uses the WebSocket.
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/api/rooms` | List open rooms: `{ rooms: [{ code, players, max, state }] }`. Invite-only rooms are omitted. |
+| `POST` | `/api/rooms` | Create a room. Body `{ "visibility": "open" \| "private" }` → `{ code, visibility }`. |
+
+Joining is a WebSocket connection to `/?room=CODE`. An unknown code replies `{ "type": "notfound" }` and closes (the client returns to the lobby); a full room replies `{ "type": "full" }`.
 
 ## Customize your tank
 
@@ -68,7 +83,7 @@ Server starts on port 3000.
 3. On the host machine, open `http://localhost:3000`.
 4. On every other device connected to the **same Wi-Fi**, open `http://YOUR_LOCAL_IP:3000` (e.g. `http://192.168.1.15:3000`).
 
-The first player to connect gets a room code and their URL becomes `http://…/?room=CODE`. Share that exact link with everyone else — they'll join the same room. Up to 4 players per room; different codes run separate games on the same server.
+Open the site and use the **lobby**: **Create open room** lets anyone join, **Create invite-only** keeps it private. Share the `?room=CODE` link (or the code) with your friends. Up to 4 players per room; different codes run separate games on the same server.
 
 All devices must be on the same local network — this does not work over the open internet without extra setup (see below).
 

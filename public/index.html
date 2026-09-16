@@ -501,19 +501,19 @@
     @keyframes boltOut { from { opacity: 1; } to { opacity: 0; } }
     .hauntInvert { filter: invert(1) hue-rotate(180deg); transition: filter 0.12s; }
     .blurStart { filter: blur(2px); transition: filter 0.2s; }
-    #garageCard .garageSection {
+    .garageSection {
         display: flex;
         align-items: center;
         gap: 10px;
         margin: 18px 0 10px;
     }
-    #garageCard .garageSection::before, #garageCard .garageSection::after {
+    .garageSection::before, .garageSection::after {
         content: '';
         flex: 1;
         height: 1px;
         background: var(--line);
     }
-    #garageCard .garageSection span {
+    .garageSection span {
         font-size: 10px;
         letter-spacing: 0.24em;
         text-transform: uppercase;
@@ -580,6 +580,92 @@
         transition: opacity 0.3s;
     }
     #hauntTag.on { opacity: 1; }
+
+    /* ---- Lobby (full page) ---- */
+    #lobby {
+        position: fixed;
+        inset: 0;
+        z-index: 20;
+        overflow-y: auto;
+        scrollbar-width: none;
+        background: radial-gradient(120% 120% at 50% 0%, #14160f 0%, #0b0c0a 70%);
+    }
+    #lobby::-webkit-scrollbar { display: none; }
+    #lobby.hidden { display: none; }
+    #lobbyPage {
+        min-height: 100%;
+        width: 100%;
+        max-width: 1100px;
+        margin: 0 auto;
+        padding: 32px clamp(16px, 4vw, 48px) 44px;
+        display: flex;
+        flex-direction: column;
+        gap: 22px;
+    }
+    #lobbyHead h1 {
+        margin: 0 0 4px;
+        font-size: 18px;
+        letter-spacing: 0.34em;
+        text-transform: uppercase;
+        color: var(--text);
+    }
+    #lobbyHead .sub {
+        margin: 0;
+        font-size: 10px;
+        letter-spacing: 0.24em;
+        text-transform: uppercase;
+        color: var(--muted);
+    }
+    #lobbyBody { display: flex; gap: 28px; align-items: flex-start; flex-wrap: wrap; }
+    #lobbyCreate { flex: 0 0 300px; display: flex; flex-direction: column; gap: 8px; }
+    #lobbyCreate .garageSection:first-child { margin-top: 0; }
+    #lobbyRooms { flex: 1 1 420px; min-width: 0; }
+    #lobbyRooms .garageSection { margin-top: 0; }
+    .lobbyBtn {
+        background: #0f1109;
+        border: 1px solid var(--line2);
+        border-radius: 6px;
+        color: var(--text);
+        font-family: var(--mono);
+        font-size: 10px;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        padding: 10px 12px;
+        cursor: pointer;
+        transition: border-color 0.12s, background 0.12s;
+    }
+    .lobbyBtn:hover:not(:disabled) { border-color: var(--amber); background: rgba(224,169,56,0.08); }
+    .lobbyBtn:disabled { opacity: 0.4; cursor: default; }
+    #lobbyList { display: flex; flex-direction: column; gap: 6px; min-height: 40px; }
+    .lobbyEmpty { font-size: 10px; letter-spacing: 0.12em; color: var(--muted); margin: 6px 0; }
+    .lobbyRoom {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        background: #0f1109;
+        border: 1px solid var(--line2);
+        border-radius: 6px;
+        padding: 10px 12px;
+    }
+    .lobbyRoomCode { font-size: 13px; letter-spacing: 0.28em; color: var(--amber); }
+    .lobbyRoomInfo { flex: 1; font-size: 9px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
+    .lobbyRoom .lobbyBtn { flex: 0 0 auto; }
+    #lobbyJoinRow { display: flex; gap: 8px; }
+    #lobbyJoinRow input {
+        flex: 1;
+        min-width: 0;
+        background: #0f1109;
+        border: 1px solid var(--line2);
+        border-radius: 6px;
+        color: var(--text);
+        font-family: var(--mono);
+        font-size: 12px;
+        letter-spacing: 0.28em;
+        text-transform: uppercase;
+        padding: 9px 10px;
+    }
+    #lobbyMsg { margin: 0; min-height: 12px; font-size: 10px; letter-spacing: 0.14em; color: var(--red); }
+    body.in-lobby #hud, body.in-lobby #help, body.in-lobby #customizeBtn, body.in-lobby #emoteBar { display: none; }
 </style>
 </head>
 <body>
@@ -621,7 +707,32 @@
     <button id="chatSend">Send</button>
 </div>
 <button id="customizeBtn">Armory (G)</button>
-<div id="garage">
+<div id="lobby">
+    <div id="lobbyPage">
+        <header id="lobbyHead">
+            <h1>Pixel Tank Duel</h1>
+            <p class="sub">Choose a battle</p>
+        </header>
+        <div id="lobbyBody">
+            <section id="lobbyCreate">
+                <div class="garageSection"><span>Create a room</span></div>
+                <button id="createOpenBtn" class="lobbyBtn">Create open room</button>
+                <button id="createPrivateBtn" class="lobbyBtn">Create invite-only</button>
+                <div class="garageSection"><span>Join by code</span></div>
+                <div id="lobbyJoinRow">
+                    <input id="lobbyCodeInput" maxlength="4" placeholder="CODE" autocomplete="off" spellcheck="false">
+                    <button id="lobbyJoinBtn" class="lobbyBtn">Join</button>
+                </div>
+            </section>
+            <section id="lobbyRooms">
+                <div class="garageSection"><span>Open rooms</span></div>
+                <div id="lobbyList"></div>
+            </section>
+        </div>
+        <p id="lobbyMsg"></p>
+    </div>
+</div>
+<div id="garage" class="hidden">
     <div id="garageCard">
         <h1>Armory</h1>
         <p class="sub">Tank Configuration</p>
@@ -675,15 +786,22 @@ if (!deviceToken) {
     localStorage.setItem('tankToken', deviceToken);
 }
 
-// Room: join the code in ?room=CODE, or let the server mint one on connect.
+// Room: join the code in ?room=CODE, otherwise pick one from the lobby.
 const roomParam = (new URLSearchParams(location.search).get('room') || '')
     .toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4);
 let roomCode = roomParam;
 
-const ws = new WebSocket(`${protocol}//${location.host}/` + (roomParam ? `?room=${roomParam}` : ''));
-ws.addEventListener('open', () => {
-    if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'auth', token: deviceToken }));
-});
+let ws = null;
+function sendWs(obj) {
+    if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(obj));
+}
+function connectToRoom(code) {
+    roomCode = code || '';
+    const url = `${protocol}//${location.host}/` + (roomCode ? `?room=${roomCode}` : '');
+    ws = new WebSocket(url);
+    ws.addEventListener('open', () => sendWs({ type: 'auth', token: deviceToken }));
+    ws.onmessage = handleMessage;
+}
 
 let myId = null;
 let players = {};
@@ -1071,7 +1189,7 @@ function applyCatalog(data) {
 
 function sendDesign() {
     localStorage.setItem('tankDesign', JSON.stringify(design));
-    if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'design', design }));
+    sendWs({ type: 'design', design });
 }
 
 garageDoneEl.onclick = () => {
@@ -1242,7 +1360,7 @@ function closeChat() {
 function sendTaunt(text) {
     const t = String(text || '').trim().slice(0, 40);
     if (!t) return;
-    if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'taunt', text: t }));
+    sendWs({ type: 'taunt', text: t });
 }
 document.getElementById('chatSend').onclick = () => { sendTaunt(chatInputEl.value); closeChat(); };
 chatInputEl.addEventListener('keydown', (e) => {
@@ -1405,7 +1523,7 @@ if (isTouch) {
 }
 
 // ---- Networking ----
-ws.onmessage = (event) => {
+function handleMessage(event) {
     const data = JSON.parse(event.data);
     if (data.type === 'init') {
         myId = data.id;
@@ -1463,7 +1581,11 @@ ws.onmessage = (event) => {
         }
         buildForge();
     } else if (data.type === 'full') {
-        bannerEl.textContent = `Room ${roomCode} is full (4/4) — join another code in the Armory`;
+        showLobby(`Room ${roomCode} is full — pick another`);
+        if (ws) { try { ws.close(); } catch (e) {} }
+    } else if (data.type === 'notfound') {
+        showLobby(data.roomCode ? `Room ${data.roomCode} not found — pick another` : 'Room not found');
+        if (ws) { try { ws.close(); } catch (e) {} }
     } else if (data.type === 'map') {
         obstacles = data.obstacles;
         mapName = data.name || mapName;
@@ -1536,7 +1658,7 @@ ws.onmessage = (event) => {
                 const immune = (bankInfo.bought.immunity || 0) >= 1;
                 if (immune) {
                     hauntConsumedThisRound = true;
-                    if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'immunity' }));
+                    sendWs({ type: 'immunity' });
                 }
                 applyHaunt(lv, immune);
             }
@@ -1546,12 +1668,12 @@ ws.onmessage = (event) => {
         prevRoundState = data.round.state;
         roundInfo = data.round;
     }
-};
+}
 
 setInterval(() => {
-    if (ws.readyState !== WebSocket.OPEN) return;
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
     if (!garageEl.classList.contains('hidden') || chatOpen) {
-        ws.send(JSON.stringify({ type: 'input', dx: 0, dy: 0, fire: false }));
+        sendWs({ type: 'input', dx: 0, dy: 0, fire: false });
         return;
     }
     const kb = computeKeyboardVector();
@@ -1570,7 +1692,7 @@ setInterval(() => {
     }
     const msg = { type: 'input', dx, dy, fire };
     if (aim !== null) msg.aim = aim;
-    ws.send(JSON.stringify(msg));
+    sendWs(msg);
 }, 1000 / 30);
 
 // ---- Bolt feed notifications ----
@@ -1600,7 +1722,7 @@ const CAT_LABELS = {
 const CAT_ORDER = ['skin', 'trail', 'boom', 'spawn', 'consumable'];
 
 function buyItem(itemId) {
-    if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'buy', itemId }));
+    sendWs({ type: 'buy', itemId });
 }
 function equipCosmetic(cat, itemId) {
     design[cat] = design[cat] === itemId ? null : itemId;
@@ -1730,7 +1852,7 @@ function buildForge() {
                 const cur = mapsList.indexOf(mapName);
                 const others = mapsList.map((_, i) => i).filter((i) => i !== cur);
                 const target = others.length ? others[Math.floor(Math.random() * others.length)] : 0;
-                if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'mapvote', mapIndex: target }));
+                sendWs({ type: 'mapvote', mapIndex: target });
             };
             opts.appendChild(nb);
         }
@@ -1739,7 +1861,7 @@ function buildForge() {
             ib.className = 'garageOpt';
             ib.textContent = `Haunt Shield ×${bankInfo.bought.immunity}`;
             ib.onclick = () => {
-                if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'immunity' }));
+                sendWs({ type: 'immunity' });
             };
             opts.appendChild(ib);
         }
@@ -2540,6 +2662,102 @@ window.addEventListener('keyup', (e) => {
     if (e.key === 'Tab') { e.preventDefault(); setScoreboard(false); }
 });
 window.addEventListener('blur', () => setScoreboard(false));
+
+// ---- Lobby ----
+const lobbyEl = document.getElementById('lobby');
+const lobbyListEl = document.getElementById('lobbyList');
+const lobbyMsgEl = document.getElementById('lobbyMsg');
+const lobbyCodeInput = document.getElementById('lobbyCodeInput');
+
+function showLobby(msg) {
+    lobbyEl.classList.remove('hidden');
+    garageEl.classList.add('hidden');
+    document.body.classList.add('in-lobby');
+    lobbyMsgEl.textContent = msg || '';
+    try { history.replaceState(null, '', location.pathname); } catch (e) {}
+    refreshLobby();
+}
+function hideLobby() {
+    lobbyEl.classList.add('hidden');
+    document.body.classList.remove('in-lobby');
+}
+function enterRoom(code) {
+    hideLobby();
+    garageEl.classList.remove('hidden');
+    try { history.replaceState(null, '', `?room=${code}`); } catch (e) {}
+    connectToRoom(code);
+}
+async function refreshLobby() {
+    try {
+        const res = await fetch('/api/rooms');
+        const data = await res.json();
+        renderLobbyRooms(data.rooms || []);
+    } catch (e) {
+        lobbyMsgEl.textContent = 'Could not load rooms';
+    }
+}
+function renderLobbyRooms(rooms) {
+    lobbyListEl.innerHTML = '';
+    if (!rooms.length) {
+        const p = document.createElement('p');
+        p.className = 'lobbyEmpty';
+        p.textContent = 'No open rooms — create one!';
+        lobbyListEl.appendChild(p);
+        return;
+    }
+    for (const room of rooms) {
+        const row = document.createElement('div');
+        row.className = 'lobbyRoom';
+        const code = document.createElement('span');
+        code.className = 'lobbyRoomCode';
+        code.textContent = room.code;
+        const info = document.createElement('span');
+        info.className = 'lobbyRoomInfo';
+        info.textContent = `${room.players}/${room.max} · ${room.state}`;
+        const btn = document.createElement('button');
+        btn.className = 'lobbyBtn';
+        const full = room.players >= room.max;
+        btn.textContent = full ? 'Full' : 'Join';
+        btn.disabled = full;
+        btn.onclick = () => enterRoom(room.code);
+        row.append(code, info, btn);
+        lobbyListEl.appendChild(row);
+    }
+}
+async function createRoom(visibility) {
+    try {
+        const res = await fetch('/api/rooms', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ visibility }),
+        });
+        const data = await res.json();
+        if (data.code) enterRoom(data.code);
+    } catch (e) {
+        lobbyMsgEl.textContent = 'Could not create room';
+    }
+}
+function joinByCode() {
+    const c = lobbyCodeInput.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4);
+    if (c) enterRoom(c);
+}
+
+document.getElementById('createOpenBtn').onclick = () => createRoom('open');
+document.getElementById('createPrivateBtn').onclick = () => createRoom('private');
+document.getElementById('lobbyJoinBtn').onclick = joinByCode;
+lobbyCodeInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') joinByCode(); });
+
+// Startup: a shared ?room= link skips the lobby; otherwise show it.
+if (roomParam) {
+    hideLobby();
+    garageEl.classList.remove('hidden');
+    connectToRoom(roomParam);
+} else {
+    showLobby();
+}
+setInterval(() => {
+    if (!lobbyEl.classList.contains('hidden')) refreshLobby();
+}, 3000);
 
 </script>
 </body>
