@@ -189,11 +189,13 @@
         border: 1px solid var(--line2);
         border-radius: 10px;
         padding: 22px 24px 20px;
-        width: min(600px, 100%);
+        width: min(1180px, 100%);
         max-height: 100%;
         overflow-y: auto;
+        scrollbar-width: none;
         box-shadow: 0 30px 80px rgba(0,0,0,0.7);
     }
+    #garageCard::-webkit-scrollbar { display: none; }
     #garageCard::before, #garageCard::after {
         content: '';
         position: absolute;
@@ -222,11 +224,12 @@
     }
     #garageBody {
         display: flex;
-        gap: 22px;
-        align-items: center;
+        gap: 24px;
+        align-items: flex-start;
         flex-wrap: wrap;
         justify-content: center;
     }
+    #garagePreviewCol { display: flex; justify-content: center; }
     #preview {
         background:
             linear-gradient(rgba(127,138,82,0.06) 1px, transparent 1px) 0 0 / 100% 20px,
@@ -236,7 +239,9 @@
         border-radius: 8px;
         flex: 0 0 auto;
     }
-    #garageControls { flex: 1 1 260px; min-width: 0; }
+    #garageLeftCol { display: flex; flex-direction: column; gap: 16px; flex: 0 0 300px; }
+    #garageControls { flex: 0 0 auto; min-width: 0; }
+    #garageForgeCol { flex: 1 1 420px; min-width: 0; }
     .garageRow { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
     .garageLabel { width: 54px; flex: 0 0 auto; font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--muted); }
     .garageOpts { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -521,23 +526,25 @@
         text-transform: uppercase;
         color: var(--muted);
     }
-    .forgeCat { margin: 10px 0 4px; font-size: 9px; letter-spacing: 0.2em; text-transform: uppercase; color: var(--muted); }
-    .forgeGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(128px, 1fr)); gap: 7px; }
+    .forgeCat { margin: 0 0 4px; font-size: 9px; letter-spacing: 0.2em; text-transform: uppercase; color: var(--muted); }
+    .forgeRow { display: flex; gap: 10px; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; align-items: flex-start; padding-bottom: 4px; }
+    .forgeRow::-webkit-scrollbar { display: none; }
+    .forgeGrid { display: flex; flex-direction: column; gap: 4px; min-width: 92px; flex-shrink: 0; }
     .forgeItem {
         background: #0f1109;
         border: 1px solid var(--line2);
         border-radius: 7px;
-        padding: 8px 9px;
+        padding: 6px 7px;
         position: relative;
         cursor: pointer;
         transition: border-color 0.12s, background 0.12s;
     }
     .forgeItem:hover { border-color: var(--amber-dim); }
     .forgeItem.equipped { border-color: var(--amber); background: rgba(224,169,56,0.08); }
-    .forgeItem .swatch { width: 100%; height: 8px; border-radius: 3px; margin-bottom: 6px; opacity: 0.9; }
-    .forgeItem .fi { font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text); }
-    .forgeItem .fc { font-size: 10px; letter-spacing: 0.08em; color: var(--amber); font-variant-numeric: tabular-nums; }
-    .forgeItem .fd { font-size: 8px; letter-spacing: 0.06em; color: var(--muted); margin-top: 3px; line-height: 1.4; }
+    .forgeItem .swatch { width: 100%; height: 6px; border-radius: 3px; margin-bottom: 4px; opacity: 0.9; }
+    .forgeItem .fi { font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text); }
+    .forgeItem .fc { font-size: 9px; letter-spacing: 0.08em; color: var(--amber); font-variant-numeric: tabular-nums; }
+    .forgeItem .fd { display: none; }
     .forgeItem .fk { position: absolute; top: 5px; right: 7px; font-size: 8px; color: var(--olive); letter-spacing: 0.1em; }
     .forgeItem.owned .fk { color: var(--amber); }
     .forgeItem.locked { opacity: 0.5; }
@@ -617,8 +624,13 @@
         <h1>Armory</h1>
         <p class="sub">Tank Configuration</p>
         <div id="garageBody">
-            <canvas id="preview" width="180" height="180"></canvas>
-            <div id="garageControls"></div>
+            <div id="garageLeftCol">
+                <div id="garagePreviewCol">
+                    <canvas id="preview" width="180" height="180"></canvas>
+                </div>
+                <div id="garageControls"></div>
+            </div>
+            <div id="garageForgeCol"></div>
         </div>
         <button id="garageDone">Deploy</button>
         <p id="garageError" class="hidden">Enter a callsign to deploy</p>
@@ -718,6 +730,7 @@ for (const cat of COSMETIC_CATS) if (!design[cat]) design[cat] = null;
 const garageEl = document.getElementById('garage');
 const previewCtx = document.getElementById('preview').getContext('2d');
 const garageControls = document.getElementById('garageControls');
+const garageForgeCol = document.getElementById('garageForgeCol');
 const garageDoneEl = document.getElementById('garageDone');
 const garageErrorEl = document.getElementById('garageError');
 let nameInputEl = null;
@@ -1370,6 +1383,15 @@ ws.onmessage = (event) => {
             else boltNote(`${r.amount} ⚡ ${r.type === 'match' ? 'match lost' : 'round lost'}`, 'neg');
         } else if (r && typeof r === 'object' && r.type === 'bought') {
             boltNote('equipped · forged');
+            // a bought cosmetic is applied server-side already; keep local design in sync
+            const it = shopItems.find((i) => i.id === r.itemId);
+            if (it && it.cat !== 'consumable') {
+                design[it.cat] = it.id;
+                localStorage.setItem('tankDesign', JSON.stringify(design));
+                drawPreview();
+            }
+        } else if (r && typeof r === 'object' && r.type === 'boughtFail') {
+            boltNote('not enough bolts', 'neg');
         } else if (r && typeof r === 'object' && r.type === 'mapvoted') {
             boltNote('map vote cast');
         } else if (r && typeof r === 'object' && r.type === 'immunityUsed') {
@@ -1543,13 +1565,19 @@ function buildForge() {
     bal.style.color = 'var(--amber)';
     holder.appendChild(bal);
 
+    const forgeRow = document.createElement('div');
+    forgeRow.className = 'forgeRow';
+    holder.appendChild(forgeRow);
+
     for (const cat of CAT_ORDER) {
         const items = shopItems.filter((i) => i.cat === cat);
         if (!items.length) continue;
+        const col = document.createElement('div');
+        forgeRow.appendChild(col);
         const h = document.createElement('div');
         h.className = 'forgeCat';
         h.textContent = CAT_LABELS[cat] || cat;
-        holder.appendChild(h);
+        col.appendChild(h);
 
         const grid = document.createElement('div');
         grid.className = 'forgeGrid';
@@ -1602,7 +1630,7 @@ function buildForge() {
             };
             grid.appendChild(div);
         }
-        holder.appendChild(grid);
+        col.appendChild(grid);
     }
 
     const sh = document.createElement('div');
@@ -1657,13 +1685,14 @@ function buildForge() {
 }
 
 function pushForge() {
+    garageForgeCol.innerHTML = '';
     const row = document.createElement('div');
     row.className = 'garageSection';
     row.innerHTML = '<span>The Forge</span>';
-    garageControls.appendChild(row);
+    garageForgeCol.appendChild(row);
     const holder = document.createElement('div');
     holder.id = 'forgeHolder';
-    garageControls.appendChild(holder);
+    garageForgeCol.appendChild(holder);
     buildForge();
 }
 

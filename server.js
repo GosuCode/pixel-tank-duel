@@ -704,17 +704,19 @@ wss.on('connection', (ws) => {
       if (!item || !b) return;
       const owned = b.owned.filter((own) => own !== item.id);
       if (item.cat === 'consumable') {
-        if ((b.bought[item.id] || 0) >= 1) return; // one consumable held at a time
-        if (b.bolts < item.cost) return;
+        if ((b.bought[item.id] || 0) >= 1) { sendBank(p, { type: 'boughtFail', itemId: item.id }); return; }
+        if (b.bolts < item.cost) { sendBank(p, { type: 'boughtFail', itemId: item.id }); return; }
         b.bolts -= item.cost;
         b.bought[item.id] = (b.bought[item.id] || 0) + 1;
         p.bolts = b.bolts; p.bought = b.bought;
         saveBank();
         sendBank(p, { type: 'bought', itemId: item.id });
       } else {
-        if (b.bolts < item.cost) return;
+        if (b.bolts < item.cost) { sendBank(p, { type: 'boughtFail', itemId: item.id }); return; }
         b.bolts -= item.cost;
         if (!b.owned.includes(item.id)) b.owned.push(item.id);
+        // auto-equip: a bought cosmetic takes effect immediately
+        if (p.design) p.design[item.cat] = item.id;
         p.bolts = b.bolts; p.owned = b.owned.slice();
         saveBank();
         sendBank(p, { type: 'bought', itemId: item.id });
