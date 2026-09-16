@@ -1,0 +1,92 @@
+{
+  "ACCC": {
+    "bolts": 0,
+    "owned": [],
+    "wins": 0,
+    "losses": 13,
+    "streak": 0,
+    "best": 0,
+    "bought": {
+      "mapvote": 0
+    }
+  },
+  "q": {
+    "bolts": 25,
+    "owned": [],
+    "wins": 0,
+    "losses": 0,
+    "streak": 0,
+    "best": 0,
+    "bought": {}
+  },
+  "qw": {
+    "bolts": 25,
+    "owned": [],
+    "wins": 0,
+    "losses": 0,
+    "streak": 0,
+    "best": 0,
+    "bought": {}
+  },
+  "qwe": {
+    "bolts": 25,
+    "owned": [],
+    "wins": 0,
+    "losses": 0,
+    "streak": 0,
+    "best": 0,
+    "bought": {}
+  },
+  "qwee": {
+    "bolts": 69,
+    "owned": [
+      "trail_fire",
+      "boom_confetti",
+      "spawn_smoke",
+      "skin_camo",
+      "spawn_sky",
+      "trail_rainbow"
+    ],
+    "wins": 13,
+    "losses": 0,
+    "streak": 13,
+    "best": 13,
+    "bought": {}
+  },
+  "s": {
+    "bolts": 25,
+    "owned": [],
+    "wins": 0,
+    "losses": 0,
+    "streak": 0,
+    "best": 0,
+    "bought": {}
+  },
+  "sa": {
+    "bolts": 25,
+    "owned": [],
+    "wins": 0,
+    "losses": 0,
+    "streak": 0,
+    "best": 0,
+    "bought": {}
+  },
+  "sad": {
+    "bolts": 25,
+    "owned": [],
+    "wins": 0,
+    "losses": 0,
+    "streak": 0,
+    "best": 0,
+    "bought": {}
+  },
+  "sadf": {
+    "bolts": 25,
+    "owned": [],
+    "wins": 0,
+    "losses": 0,
+    "streak": 0,
+    "best": 0,
+    "bought": {}
+  }
+}

@@ -1,6 +1,8 @@
 const express = require('express');
 const { WebSocketServer } = require('ws');
 const http = require('http');
+const fs = require('fs');
+const path = require('path');
 
 const app = express();
 const server = http.createServer(app);
@@ -53,6 +55,81 @@ const HIT_EVENT_DURATION = 350; // ms a hit marker stays in the state feed
 // Kept deliberately short - this is a friends-on-the-LAN game, not a chat app.
 const PROFANITY = ['fuck', 'shit', 'bitch', 'cunt', 'asshole', 'dick', 'pussy', 'fag', 'nigger', 'retard'];
 
+// ---- Bolt economy ----
+const START_BOLTS = 25;
+const KILL_BOLTS = 3;
+const ACE_BOLTS = 5;
+const FIRST_BLOOD_BOLTS = 2;
+const ROUND_WIN_BOLTS = 5;
+const MATCH_WIN_BOLTS = 15;
+const ACCURATE_BOLTS = 2; // round accuracy >= 60%
+const SURVIVED_BOLTS = 3; // died zero times in the round
+const STREAK_BONUS_BOLTS = 1; // extra per kill after a 2-kill streak
+const DEATH_TAX = 2;
+const ROUND_LOSS_TAX = 3;
+const MATCH_LOSS_TAX = 8;
+const RAGE_QUIT_TAX = 15;
+const MAP_VOTE_COST = 15;
+const HAUNT_IMMUNITY_COST = 20;
+const ACCURATE_THRESHOLD = 0.6;
+
+const BANK_FILE = path.join(__dirname, 'data', 'players.json');
+let bank = {}; // callsign -> { bolts, owned:[itemId], wins, losses, streak, best, bought:{} }
+try {
+  bank = JSON.parse(fs.readFileSync(BANK_FILE, 'utf8'));
+} catch {}
+
+const saveBank = () => {
+  try {
+    fs.mkdirSync(path.dirname(BANK_FILE), { recursive: true });
+    fs.writeFileSync(BANK_FILE, JSON.stringify(bank, null, 2));
+  } catch (e) {
+    console.error('bank save failed:', e.message);
+  }
+};
+
+// The streak system has two independent counters.
+// best:  +1 on every round win, reset to 0 on every round loss
+// streak: like best, but also reset to 0 on rage-quit disconnects
+const WIN_STREAK_SKINS = [
+  { at: 3, id: 'scarred', name: 'Scarred', desc: '3-win streak: battle-scarred hull' },
+  { at: 5, id: 'golden', name: 'Golden', desc: '5-win streak: gold trim' },
+  { at: 10, id: 'phantom', name: 'Phantom', desc: '10-win streak: translucent ghost hull' },
+  { at: 25, id: 'titanium', name: 'Titanium', desc: '25-win streak: full chrome, untradeable brag' },
+];
+const HAUNT_LEVELS = [
+  { level: 1, name: 'Haunted', desc: 'Tab title turns into taunts' },
+  { level: 2, name: 'Cursed', desc: 'Random beeps from your speakers, blurry start' },
+  { level: 3, name: 'Possessed', desc: 'Window shrinks, controls scramble' },
+  { level: 4, name: 'Hexed', desc: 'Notification spam + screen inversion' },
+  { level: 5, name: 'Damned', desc: 'Everything: webcam request joins the chaos' },
+];
+
+// ---- The Forge: buyable cosmetics & consumables ----
+const SHOP_ITEMS = [
+  // Simple cosmetics: { id, cat, name, cost, color }
+  { id: 'skin_camo', cat: 'skin', name: 'Camo', cost: 30, color: '#6b7d3a' },
+  { id: 'skin_neon', cat: 'skin', name: 'Neon', cost: 60, color: '#00e5ff' },
+  { id: 'skin_ghost', cat: 'skin', name: 'Ghost', cost: 80, color: '#c9c3aa' },
+  { id: 'skin_chrome', cat: 'skin', name: 'Chrome', cost: 100, color: '#b8c0c8' },
+  { id: 'skin_ember', cat: 'skin', name: 'Ember', cost: 50, color: '#ff6d3a' },
+  { id: 'trail_fire', cat: 'trail', name: 'Fire Trail', cost: 35, color: '#ff9100' },
+  { id: 'trail_rainbow', cat: 'trail', name: 'Rainbow Trail', cost: 60, color: '#ff6ec7' },
+  { id: 'trail_spark', cat: 'trail', name: 'Sparkle Trail', cost: 30, color: '#fff176' },
+  { id: 'trail_smoke', cat: 'trail', name: 'Smoke Trail', cost: 25, color: '#9e9e9e' },
+  { id: 'boom_confetti', cat: 'boom', name: 'Confetti Boom', cost: 40, color: '#ffd600' },
+  { id: 'boom_skull', cat: 'boom', name: 'Skull Cloud', cost: 70, color: '#dcedc8' },
+  { id: 'boom_comets', cat: 'boom', name: 'Comet Boom', cost: 50, color: '#40c4ff' },
+  { id: 'spawn_portal', cat: 'spawn', name: 'Portal In', cost: 45, color: '#b388ff' },
+  { id: 'spawn_sky', cat: 'spawn', name: 'Drop From Sky', cost: 55, color: '#aeea00' },
+  { id: 'spawn_smoke', cat: 'spawn', name: 'Smoke Reveal', cost: 30, color: '#eceff1' },
+  // Consumables (tracked in bought.qty, used by the client when spent)
+  { id: 'mapvote', cat: 'consumable', name: 'Map Vote', cost: MAP_VOTE_COST, desc: 'Force next map vote' },
+  { id: 'immunity', cat: 'consumable', name: 'Haunt Immunity', cost: HAUNT_IMMUNITY_COST, desc: 'Block one haunt' },
+];
+const SHOP_BY_ID = {};
+for (const it of SHOP_ITEMS) SHOP_BY_ID[it.id] = it;
+
 const TANK_COLORS = [
   { id: 'red', hex: '#FF4136', name: 'Red' },
   { id: 'blue', hex: '#0074D9', name: 'Blue' },
@@ -78,6 +155,10 @@ function defaultDesign(index, colorHex) {
     barrel: 'medium',
     treads: 'treads',
     color: colorHex || TANK_COLORS[index % TANK_COLORS.length].hex,
+    skin: null,
+    trail: null,
+    boom: null,
+    spawn: null,
   };
 }
 
@@ -97,7 +178,18 @@ function sanitizeTaunt(value) {
   return raw.slice(0, TAUNT_MAX_LEN);
 }
 
-function sanitizeDesign(input, fallback) {
+// Cosmetics (skin/trail/boom/spawn) are only honored if the callsign owns the
+// item - a hacked client can't equip gear it never bought.
+function ownables(d) {
+  const out = ['none'];
+  const allowed = new Set(d || []);
+  for (const it of SHOP_ITEMS) {
+    if (it.cat !== 'consumable' && allowed.has(it.id)) out.push(it.id);
+  }
+  return out;
+}
+
+function sanitizeDesign(input, fallback, owned) {
   const d = input && typeof input === 'object' ? input : {};
   const design = {};
   for (const key of Object.keys(TANK_PARTS)) {
@@ -106,6 +198,10 @@ function sanitizeDesign(input, fallback) {
   design.color = TANK_COLORS.some((c) => c.hex === d.color) ? d.color : fallback.color;
   design.treads = 'treads';
   design.name = sanitizeName(d.name, fallback.name);
+  const hoard = ownables(owned || []);
+  for (const cat of ['skin', 'trail', 'boom', 'spawn']) {
+    design[cat] = hoard.includes(d[cat]) ? d[cat] : null;
+  }
   return design;
 }
 
@@ -116,6 +212,55 @@ function colorName(hex) {
 
 function displayName(p) {
   return (p.design && p.design.name) || colorName(p.design.color);
+}
+
+// ---- Bolt bank + haunts ----
+function bankOf(p) {
+  const name = (p.design && p.design.name) || '';
+  if (!name) return null;
+  if (!bank[name]) {
+    bank[name] = { bolts: START_BOLTS, owned: [], wins: 0, losses: 0, streak: 0, best: 0, bought: {} };
+    saveBank();
+  }
+  return bank[name];
+}
+
+function credit(name, amount) {
+  const b = (name && bank[name]) || null;
+  if (!b) return 0;
+  b.bolts += amount;
+  saveBank();
+  return b.bolts;
+}
+
+function debit(name, amount) {
+  const b = (name && bank[name]) || null;
+  if (!b) return 0;
+  b.bolts = Math.max(0, b.bolts - amount);
+  saveBank();
+  return b.bolts;
+}
+
+function sendBank(p, msg) {
+  try {
+    if (!p || !p.ws || p.ws.readyState !== 1) return;
+    const b = bankOf(p);
+    if (b) p.ws.send(JSON.stringify({ type: 'bank', bolts: p.bolts, owned: b.owned, bought: b.bought,
+      streak: Math.max(p.streak, 0), wins: b.wins, losses: b.losses, best: b.best,
+      hauntLevel: p.hauntLevel, streakSkins: WIN_STREAK_SKINS.filter((s) => p.best >= s.at).map((s) => s.id),
+      reason: msg ? msg : undefined }));
+  } catch (e) {}
+}
+
+function bumpHaunt(p) {
+  p.lossStreak = (p.lossStreak || 0) + 1;
+  p.streak = 0;
+  p.hauntLevel = Math.min(5, Math.max(1, Math.floor(p.lossStreak / 2) + 1));
+}
+
+function clearHaunt(p) {
+  p.lossStreak = 0;
+  p.hauntLevel = 0;
 }
 
 const SPAWNS = [
@@ -202,6 +347,7 @@ let round = {
   countdownEndAt: 0,
   powerupPlan: [],
   powerupIndex: 0,
+  firstBloodGiven: false,
 };
 let match = { targetWins: MATCH_TARGET_WINS, roundNumber: 0, over: false, winnerText: '' };
 let powerup = null; // { x, y, type }
@@ -288,6 +434,13 @@ function resetPlayerForRound(p, index) {
   p.dx = 0;
   p.dy = 0;
   p.fire = false;
+  // round-scoped economy flags
+  p.roundFirstBlood = false;
+  p.roundSurvived = true;
+  p.killStreak = 0;
+  p.firstBloodGiven = false;
+  p.wonRound = false;
+  p.rageQuitTaxed = false;
 }
 
 function broadcastMap() {
@@ -321,6 +474,7 @@ function startRound() {
   round.endAt = 0;
   round.winnerText = '';
   round.winnerId = null;
+  round.firstBloodGiven = false;
 }
 
 function beginActiveRound(now) {
@@ -331,6 +485,9 @@ function beginActiveRound(now) {
 
 function endRound(winnerId, winnerText) {
   const now = Date.now();
+  const total = Object.keys(players).length;
+  const aliveCount = Object.values(players).filter((p) => p.alive).length;
+  const wiped = total >= 2 && aliveCount <= 1;
   round.state = 'ended';
   round.winnerId = winnerId || null;
   round.winnerText = winnerText;
@@ -343,6 +500,59 @@ function endRound(winnerId, winnerText) {
       match.winnerText = `${displayName(winner)} wins the match!`;
     }
   }
+
+  // ---- Bolt settlement: per-player round reward/penalty + haunt + streak ----
+  for (const id in players) {
+    const p = players[id];
+    if (!p.design || !p.design.name) continue;
+    const b = bankOf(p);
+    if (!b) continue;
+
+    let earned = 0;
+    let isWin = false;
+    if (p.shots > 0 && p.hits / p.shots >= ACCURATE_THRESHOLD) earned += ACCURATE_BOLTS;
+    if (p.roundSurvived) earned += SURVIVED_BOLTS;
+
+    if (winner) {
+      isWin = id === winnerId;
+      if (winnerId && isWin) {
+        earned += ROUND_WIN_BOLTS;
+        if (wiped) earned += ACE_BOLTS;
+        p.streak += 1;
+        p.wonRound = true;
+        p.best = Math.max(p.best, p.streak);
+        clearHaunt(p);
+        b.wins = (b.wins || 0) + 1;
+      } else if (winnerId) {
+        earned -= ROUND_LOSS_TAX;
+        b.losses = (b.losses || 0) + 1;
+        bumpHaunt(p);
+      }
+      b.streak = p.streak;
+      b.best = p.best;
+    }
+
+    if (earned > 0) {
+      p.bolts = credit(p.design.name, earned);
+      sendBank(p, { type: 'round', amount: earned, win: isWin });
+    } else if (earned < 0) {
+      p.bolts = debit(p.design.name, -earned);
+      sendBank(p, { type: 'round', amount: earned, win: false });
+    }
+
+    // match settlement on top of the round settlement
+    if (winner && match.over && winnerId) {
+      if (id === winnerId) {
+        p.bolts = credit(p.design.name, MATCH_WIN_BOLTS);
+        sendBank(p, { type: 'match', amount: MATCH_WIN_BOLTS, win: true });
+      } else {
+        p.bolts = debit(p.design.name, MATCH_LOSS_TAX);
+        sendBank(p, { type: 'match', amount: -MATCH_LOSS_TAX, win: false });
+      }
+    }
+  }
+  saveBank();
+
   round.endsWaitingAt = now + (match.over ? MATCH_END_DELAY : RESTART_DELAY);
 }
 
@@ -372,6 +582,13 @@ wss.on('connection', (ws) => {
   const freeColor = TANK_COLORS.find((c) => !usedColors.has(c.hex));
   const design = defaultDesign(index, freeColor && freeColor.hex);
 
+  const bankStart = (() => {
+    const b = bank[design.name];
+    if (b) return { bolts: b.bolts, owned: b.owned, bought: b.bought, wins: b.wins, losses: b.losses,
+      streak: b.streak, best: b.best };
+    return null;
+  })();
+
   players[id] = {
     x: spawn.x,
     y: spawn.y,
@@ -397,7 +614,24 @@ wss.on('connection', (ws) => {
     shots: 0,
     hits: 0,
     powerups: 0,
+    // bolt economy + haunt state (server-side per match, backed by bank store)
+    bolts: bankStart ? bankStart.bolts : START_BOLTS,
+    owned: bankStart ? bankStart.owned : [],
+    bought: bankStart ? bankStart.bought : {},
+    wins: bankStart ? bankStart.wins : 0,
+    losses: bankStart ? bankStart.losses : 0,
+    streak: bankStart ? bankStart.streak : 0,
+    best: bankStart ? bankStart.best : 0,
+    hauntLevel: 0,
+    lossStreak: 0,
+    killStreak: 0,
+    roundFirstBlood: false,
+    roundSurvived: false,
+    rageQuitTaxed: false,
+    wonRound: false,
+    firstBloodGiven: false,
   };
+  players[id].ws = ws;
 
   ws.send(JSON.stringify({
     type: 'init',
@@ -407,7 +641,11 @@ wss.on('connection', (ws) => {
     mapName: MAPS[mapIndex].name,
     palette: TANK_COLORS,
     parts: TANK_PARTS,
+    maps: MAPS.map((m) => m.name),
+    shop: SHOP_ITEMS.map((i) => ({ id: i.id, cat: i.cat, name: i.name, cost: i.cost, color: i.color, desc: i.desc })),
+    streakSkins: WIN_STREAK_SKINS.map((s) => ({ id: s.id, at: s.at, name: s.name, desc: s.desc })),
   }));
+  sendBank(players[id]);
 
   // joining mid-round: grant the same spawn protection so you can't be sniped on entry
   if (round.state === 'active' || round.state === 'sudden') {
@@ -434,7 +672,92 @@ wss.on('connection', (ws) => {
       p.aimControlled = typeof data.aim === 'number' && Number.isFinite(data.aim);
       if (p.aimControlled) p.aim = data.aim;
     } else if (data.type === 'design') {
-      p.design = sanitizeDesign(data.design, p.design);
+      const before = p.design.name;
+      const ownedBefore = (bankOf(p) || {}).owned || [];
+      p.design = sanitizeDesign(data.design, p.design, ownedBefore);
+      if (before && before !== p.design.name) {
+        // callsign switch: reload the bank + haunt state for the new identity
+        const b = (p.design.name && bank[p.design.name]) || null;
+        p.bolts = b ? b.bolts : START_BOLTS;
+        p.owned = b ? b.owned : [];
+        p.bought = b ? b.bought : {};
+        p.wins = b ? b.wins : 0;
+        p.losses = b ? b.losses : 0;
+        p.streak = b ? b.streak : 0;
+        p.best = b ? b.best : 0;
+        p.hauntLevel = 0;
+        p.lossStreak = 0;
+        sendBank(p, 'callsign changed');
+      } else if (p.design.name && !before) {
+        // first callsign set: hand over the bank state for this identity
+        const b = bankOf(p);
+        if (b) {
+          p.bolts = b.bolts; p.owned = b.owned; p.bought = b.bought;
+          p.wins = b.wins; p.losses = b.losses;
+          p.streak = b.streak; p.best = b.best;
+        }
+        sendBank(p, 'identity set');
+      }
+    } else if (data.type === 'buy') {
+      const item = SHOP_BY_ID[data.itemId];
+      const b = bankOf(p);
+      if (!item || !b) return;
+      const owned = b.owned.filter((own) => own !== item.id);
+      if (item.cat === 'consumable') {
+        if ((b.bought[item.id] || 0) >= 1) return; // one consumable held at a time
+        if (b.bolts < item.cost) return;
+        b.bolts -= item.cost;
+        b.bought[item.id] = (b.bought[item.id] || 0) + 1;
+        p.bolts = b.bolts; p.bought = b.bought;
+        saveBank();
+        sendBank(p, { type: 'bought', itemId: item.id });
+      } else {
+        if (b.bolts < item.cost) return;
+        b.bolts -= item.cost;
+        if (!b.owned.includes(item.id)) b.owned.push(item.id);
+        p.bolts = b.bolts; p.owned = b.owned.slice();
+        saveBank();
+        sendBank(p, { type: 'bought', itemId: item.id });
+      }
+    } else if (data.type === 'mapvote') {
+      // consume a map-vote token to force the next map (available globally)
+      const b = bankOf(p);
+      if (b && (b.bought.mapvote || 0) >= 1) {
+        b.bought.mapvote -= 1;
+        p.bought = b.bought;
+        if (MAPS.length > 1 && data.mapIndex !== mapIndex && Number.isInteger(data.mapIndex) && data.mapIndex >= 0 && data.mapIndex < MAPS.length) {
+          mapIndex = data.mapIndex;
+          OBSTACLES = MAPS[mapIndex].obstacles;
+          POWERUP_SPOTS = MAPS[mapIndex].powerupSpots;
+        }
+        saveBank();
+        sendBank(p, { type: 'mapvoted', mapIndex });
+        broadcastMap();
+      }
+    } else if (data.type === 'immunity') {
+      // a haunt immunity token absorbs the next haunting that would otherwise hit
+      const b = bankOf(p);
+      if (b && (b.bought.immunity || 0) >= 1) {
+        b.bought.immunity -= 1;
+        p.bought = b.bought;
+        p.hauntLevel = 0;
+        p.lossStreak = 0;
+        saveBank();
+        sendBank(p, { type: 'immunityUsed' });
+      }
+    } else if (data.type === 'dbg_kill' && process.env.PTD_DEBUG) {
+      // test seam: drop a one-shot bullet on the target so the real kill path
+      // (deaths, explosions, bolt settlement) runs. Ignored unless PTD_DEBUG=1.
+      const t = players[data.target];
+      const a = players[id];
+      if (t && a && t !== a && t.alive) {
+        t.hp = 1;
+        bullets.push({
+          x: t.x, y: t.y, vx: 0.01, vy: 0.01, ownerId: id,
+          bounces: 0, bounceLimit: 0, hot: false, laser: false, hitIds: [],
+          bornAt: Date.now(), startX: t.x, startY: t.y,
+        });
+      }
     } else if (data.type === 'taunt') {
       const now = Date.now();
       if (now - p.lastTaunt >= TAUNT_COOLDOWN) {
@@ -448,6 +771,22 @@ wss.on('connection', (ws) => {
   });
 
   ws.on('close', () => {
+    const p = players[id];
+    if (p) {
+      // rage quit mid-round: heavy tax + haunts persist for the next session
+      const inPlayStates = round.state === 'countdown' || round.state === 'active' || round.state === 'sudden';
+      if (inPlayStates && p.design && p.design.name && !p.rageQuitTaxed) {
+        p.rageQuitTaxed = true;
+        debit(p.design.name, RAGE_QUIT_TAX);
+        const b = bankOf(p);
+        if (b) { b.streak = 0; b.best = 0; saveBank(); }
+        p.streak = 0;
+        p.best = 0;
+        p.hauntLevel = Math.max(p.hauntLevel, 1);
+      }
+      const b = bankOf(p);
+      if (b) { b.streak = p.streak; b.best = p.best; saveBank(); }
+    }
     delete players[id];
     const inPlayStates = round.state === 'countdown' || round.state === 'active' || round.state === 'sudden';
     if (Object.keys(players).length < 2 && inPlayStates) {
@@ -645,15 +984,35 @@ function tick() {
               target.hp = 0;
               target.alive = false;
               target.deaths += 1;
+              target.roundSurvived = false;
+              target.killStreak = 0;
               kind = 'kill';
               explosions.push({
                 id: ++explosionSeq,
                 x: target.x,
                 y: target.y,
                 color: target.design.color,
+                by: b.ownerId,
+                boom: (shooter && shooter.design && shooter.design.boom) || null,
                 at: now,
               });
-              if (shooter && b.ownerId !== id) shooter.kills++;
+              if (target.design && target.design.name) {
+                target.bolts = debit(target.design.name, DEATH_TAX);
+                sendBank(target, { type: 'death', amount: -DEATH_TAX });
+              }
+              if (shooter && b.ownerId !== id) {
+                shooter.kills++;
+                if (shooter.design && shooter.design.name) {
+                  const firstBlood = round.firstBloodGiven ? 0 : FIRST_BLOOD_BOLTS;
+                  if (firstBlood) round.firstBloodGiven = true;
+                  const bolts = KILL_BOLTS + Math.min(3, shooter.killStreak) * STREAK_BONUS_BOLTS + firstBlood;
+                  shooter.killStreak++;
+                  shooter.lossStreak = 0;
+                  if (shooter.hauntLevel > 0) shooter.hauntLevel = 0;
+                  shooter.bolts = credit(shooter.design.name, bolts);
+                  if (bolts > 0) sendBank(shooter, { type: 'kill', amount: bolts, firstBlood: firstBlood > 0 });
+                }
+              }
             }
           }
           hitEvents.push({
@@ -728,6 +1087,12 @@ function tick() {
       shots: p.shots,
       hits: p.hits,
       powerups: p.powerups,
+      bolts: p.bolts,
+      hauntLevel: p.hauntLevel,
+      lossStreak: p.lossStreak || 0,
+      wonRound: !!p.wonRound,
+      streak: Math.max(p.streak, 0),
+      best: Math.max(p.best, 0),
       spawnProtected: now < p.spawnProtectedUntil,
       buff: p.buff ? { type: p.buff.type, timeLeft: Math.max(0, p.buff.expiresAt - now) } : null,
       taunt: p.taunt && p.taunt.at + TAUNT_DURATION > now ? p.taunt : null,
@@ -742,9 +1107,9 @@ function tick() {
   const state = JSON.stringify({
     type: 'state',
     players: playersOut,
-    bullets: bullets.map((b) => ({ x: b.x, y: b.y, vx: b.vx, vy: b.vy, hot: b.hot, laser: !!b.laser })),
+    bullets: bullets.map((b) => ({ x: b.x, y: b.y, vx: b.vx, vy: b.vy, hot: b.hot, laser: !!b.laser, owner: b.ownerId })),
     holes: holes.map((h) => ({ x: h.x, y: h.y, r: h.r })),
-    explosions: explosions.map((e) => ({ id: e.id, x: e.x, y: e.y, color: e.color })),
+    explosions: explosions.map((e) => ({ id: e.id, x: e.x, y: e.y, color: e.color, by: e.by, boom: e.boom })),
     hitEvents: hitEvents.map((e) => ({ id: e.id, x: e.x, y: e.y, by: e.by, target: e.target, kind: e.kind })),
     powerup: powerup ? { x: powerup.x, y: powerup.y, type: powerup.type } : null,
     powerupNext,

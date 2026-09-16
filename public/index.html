@@ -461,6 +461,117 @@
         .emoteBtn { min-width: 42px; height: 34px; font-size: 11px; }
         #chatBar { bottom: 168px; }
     }
+    /* ---- Bolt economy + haunts ---- */
+    #myBolts { color: var(--amber); font-weight: 700; }
+    #myBolts .haunted { color: var(--red); }
+    #boltFeed {
+        position: fixed;
+        top: 58px;
+        right: 16px;
+        z-index: 45;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 6px;
+        pointer-events: none;
+    }
+    .boltNote {
+        background: rgba(11,12,10,0.9);
+        border: 1px solid var(--amber-dim);
+        border-radius: 6px;
+        padding: 6px 10px;
+        font-size: 11px;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: var(--amber);
+        animation: boltIn 0.18s ease-out, boltOut 0.3s ease-in 2.7s forwards;
+        white-space: nowrap;
+        max-width: 260px;
+        text-align: right;
+    }
+    .boltNote.neg { color: var(--red); border-color: var(--red); }
+    .boltNote.atk { color: #ff1744; border-color: #ff1744; }
+    @keyframes boltIn { from { transform: translateX(24px); opacity: 0; } to { transform: none; opacity: 1; } }
+    @keyframes boltOut { from { opacity: 1; } to { opacity: 0; } }
+    .hauntInvert { filter: invert(1) hue-rotate(180deg); transition: filter 0.12s; }
+    .blurStart { filter: blur(2px); transition: filter 0.2s; }
+    #garageCard .garageSection {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin: 18px 0 10px;
+    }
+    #garageCard .garageSection::before, #garageCard .garageSection::after {
+        content: '';
+        flex: 1;
+        height: 1px;
+        background: var(--line);
+    }
+    #garageCard .garageSection span {
+        font-size: 10px;
+        letter-spacing: 0.24em;
+        text-transform: uppercase;
+        color: var(--amber);
+    }
+    #myBoltsTotal { font-size: 13px; letter-spacing: 0.1em; }
+    #forgeIntro {
+        margin: 0 0 8px;
+        font-size: 9px;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+        color: var(--muted);
+    }
+    .forgeCat { margin: 10px 0 4px; font-size: 9px; letter-spacing: 0.2em; text-transform: uppercase; color: var(--muted); }
+    .forgeGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(128px, 1fr)); gap: 7px; }
+    .forgeItem {
+        background: #0f1109;
+        border: 1px solid var(--line2);
+        border-radius: 7px;
+        padding: 8px 9px;
+        position: relative;
+        cursor: pointer;
+        transition: border-color 0.12s, background 0.12s;
+    }
+    .forgeItem:hover { border-color: var(--amber-dim); }
+    .forgeItem.equipped { border-color: var(--amber); background: rgba(224,169,56,0.08); }
+    .forgeItem .swatch { width: 100%; height: 8px; border-radius: 3px; margin-bottom: 6px; opacity: 0.9; }
+    .forgeItem .fi { font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text); }
+    .forgeItem .fc { font-size: 10px; letter-spacing: 0.08em; color: var(--amber); font-variant-numeric: tabular-nums; }
+    .forgeItem .fd { font-size: 8px; letter-spacing: 0.06em; color: var(--muted); margin-top: 3px; line-height: 1.4; }
+    .forgeItem .fk { position: absolute; top: 5px; right: 7px; font-size: 8px; color: var(--olive); letter-spacing: 0.1em; }
+    .forgeItem.owned .fk { color: var(--amber); }
+    .forgeItem.locked { opacity: 0.5; }
+    .forgeItem.disabled { opacity: 0.4; cursor: default; }
+    #streakRow { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+    .streakBadge {
+        font-size: 9px;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        border: 1px solid var(--line2);
+        border-radius: 5px;
+        padding: 4px 8px;
+        color: var(--muted);
+    }
+    .streakBadge.earned { color: #ffd600; border-color: #ffd600; }
+    #hauntTag {
+        position: fixed;
+        top: 14px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 6;
+        font-size: 10px;
+        letter-spacing: 0.3em;
+        text-transform: uppercase;
+        color: var(--red);
+        background: rgba(11,12,10,0.7);
+        border: 1px solid var(--red);
+        border-radius: 20px;
+        padding: 4px 14px;
+        pointer-events: none;
+        opacity: 0;
+        transition: opacity 0.3s;
+    }
+    #hauntTag.on { opacity: 1; }
 </style>
 </head>
 <body>
@@ -471,7 +582,9 @@
         <span id="status"></span>
         <span id="series"></span>
         <span id="myBuff"></span>
+        <span id="myBolts"></span>
     </div>
+    <div id="hauntTag"></div>
     <div id="banner"></div>
     <canvas id="gameCanvas" width="800" height="600"></canvas>
     <div id="help">Move/Aim: WASD / Arrows &nbsp;•&nbsp; Fire: Space &nbsp;•&nbsp; Emote: 1-7 &nbsp;•&nbsp; Chat: T &nbsp;•&nbsp; Scoreboard: Tab</div>
@@ -481,7 +594,7 @@
         <h2 id="scoreTitle">Match</h2>
         <table>
             <thead>
-                <tr><th></th><th>Callsign</th><th>W</th><th>K</th><th>D</th><th>DMG</th><th>ACC</th></tr>
+                <tr><th></th><th>Callsign</th><th>W</th><th>K</th><th>D</th><th>DMG</th><th>ACC</th><th>⚡</th></tr>
             </thead>
             <tbody id="scoreBody"></tbody>
         </table>
@@ -489,6 +602,7 @@
     </div>
 </div>
 <div id="hurtVignette"></div>
+<div id="boltFeed"></div>
 <div id="moveStick" class="stick"><div class="knob"></div></div>
 <div id="aimStick" class="stick"><div class="knob"></div></div>
 <div id="fireBtn">Fire</div>
@@ -523,6 +637,9 @@ const scoreboardEl = document.getElementById('scoreboard');
 const scoreTitleEl = document.getElementById('scoreTitle');
 const scoreBodyEl = document.getElementById('scoreBody');
 const hurtVignetteEl = document.getElementById('hurtVignette');
+const boltFeedEl = document.getElementById('boltFeed');
+const boltsEl = document.getElementById('myBolts');
+const hauntTagEl = document.getElementById('hauntTag');
 
 const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
 const ws = new WebSocket(`${protocol}//${location.host}`);
@@ -565,6 +682,11 @@ let hurtFlashAt = 0; // performance.now() when we last took damage
 let shakeUntil = 0; // screen shake window
 let shakeMag = 0;
 let chatOpen = false;
+let shopItems = [];
+let mapsList = [];
+let streakSkinDefs = [];
+let bankInfo = { bolts: 0, owned: [], bought: {}, streak: 0, wins: 0, losses: 0, best: 0, hauntLevel: 0, streakSkins: [] };
+let ownSpawnStart = 0; // performance.now() when my tank materialised this round
 
 const POWERUP_META = {
     speed: { color: '#00e5ff', label: 'S', name: 'SPEED' },
@@ -576,10 +698,11 @@ const POWERUP_META = {
 };
 
 // ---- Tank design (cosmetic) ----
-const DEFAULT_DESIGN = { name: '', hull: 'classic', turret: 'square', barrel: 'medium', treads: 'treads', color: '#FF4136' };
+const DEFAULT_DESIGN = { name: '', hull: 'classic', turret: 'square', barrel: 'medium', treads: 'treads', color: '#FF4136', skin: null, trail: null, boom: null, spawn: null };
 const sanitizeName = (v) => String(v || '').replace(/[^\w -]/g, '').slice(0, 4);
 const BARREL_LEN = { short: 10, medium: 18, long: 26 };
 const PART_LABELS = { hull: 'Hull', turret: 'Turret', barrel: 'Barrel' };
+const COSMETIC_CATS = ['skin', 'trail', 'boom', 'spawn'];
 
 let palette = [];
 let parts = {};
@@ -590,6 +713,7 @@ try {
 } catch {}
 design.treads = 'treads';
 design.name = sanitizeName(design.name);
+for (const cat of COSMETIC_CATS) if (!design[cat]) design[cat] = null;
 
 const garageEl = document.getElementById('garage');
 const previewCtx = document.getElementById('preview').getContext('2d');
@@ -619,6 +743,11 @@ function shade(hex, factor) {
     return `rgb(${r},${g},${b})`;
 }
 
+function hexA(hex, a) {
+    const n = parseInt(hex.slice(1), 16);
+    return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
+}
+
 function roundRect(g, x, y, w, h, r) {
     g.beginPath();
     g.moveTo(x + r, y);
@@ -645,10 +774,24 @@ function hullPath(g, shape) {
     }
 }
 
-function drawTank(g, d, turretOffset = 0) {
-    const body = d.color;
+function streakSkinFor(best) {
+    let out = null;
+    for (const s of streakSkinDefs) if (best >= s.at) out = s.id;
+    return out;
+}
+
+function drawTank(g, d, turretOffset = 0, streak = null) {
+    let body = d.color;
+    if (d.skin === 'skin_camo') body = '#6b7d3a';
+    else if (d.skin === 'skin_neon') body = '#00e5ff';
+    else if (d.skin === 'skin_ghost') body = '#c9c3aa';
+    else if (d.skin === 'skin_chrome') body = '#b8c0c8';
+    else if (d.skin === 'skin_ember') body = '#ff6d3a';
+    if (streak === 'golden') body = '#d4af37';
+    else if (streak === 'titanium') body = '#e8edf2';
     const dark = shade(body, 0.6);
     const mid = shade(body, 0.82);
+    const phantom = streak === 'phantom' || d.skin === 'skin_ghost';
 
     if (d.treads === 'treads') {
         for (const ty of [-15, 9]) {
@@ -672,6 +815,7 @@ function drawTank(g, d, turretOffset = 0) {
     }
 
     g.save();
+    if (phantom) g.globalAlpha = 0.55;
     hullPath(g, d.hull);
     if (d.hull === 'wedge') {
         g.strokeStyle = body;
@@ -687,8 +831,31 @@ function drawTank(g, d, turretOffset = 0) {
     g.fillRect(-15, -14, 30, 7);
     g.restore();
 
+    // scarred: battle scratches across the armor
+    if (streak === 'scarred') {
+        g.save();
+        g.strokeStyle = 'rgba(20,24,14,0.85)';
+        g.lineWidth = 1.2;
+        g.beginPath();
+        g.moveTo(-10, -4); g.lineTo(-3, 1); g.lineTo(-7, 7);
+        g.moveTo(3, -8); g.lineTo(10, -2); g.lineTo(6, 5);
+        g.moveTo(-1, -2); g.lineTo(5, 3);
+        g.stroke();
+        g.restore();
+    }
+    // golden/titanium: accent trim
+    if (streak === 'golden' || streak === 'titanium') {
+        g.save();
+        hullPath(g, d.hull);
+        g.strokeStyle = streak === 'golden' ? '#ffd600' : '#9fb4c8';
+        g.lineWidth = 1.6;
+        g.stroke();
+        g.restore();
+    }
+
     // turret + barrel rotate independently of the hull
     g.save();
+    if (phantom) g.globalAlpha = 0.55;
     g.rotate(turretOffset);
     g.fillStyle = dark;
     if (d.turret === 'round') {
@@ -722,7 +889,7 @@ function drawPreview() {
     previewCtx.save();
     previewCtx.translate(w / 2, h / 2);
     previewCtx.scale(2.6, 2.6);
-    drawTank(previewCtx, design);
+    drawTank(previewCtx, design, 0, streakSkinFor(bankInfo.best));
     previewCtx.restore();
 }
 
@@ -813,6 +980,8 @@ function buildGarage() {
     }
     ctrlRow.appendChild(ctrlOpts);
     garageControls.appendChild(ctrlRow);
+
+    pushForge();
 
     drawPreview();
     refreshDeployState();
@@ -1032,6 +1201,8 @@ function computeKeyboardVector() {
     if (keys['d'] || keys['arrowright']) dx += 1;
     if (keys['w'] || keys['arrowup']) dy -= 1;
     if (keys['s'] || keys['arrowdown']) dy += 1;
+    // possessed: lateral controls scramble on a timer for the first ~10s
+    if (performance.now() < scrambleUntil) dx *= scrambleFlip;
     return { dx, dy };
 }
 let keyboardFire = false;
@@ -1171,8 +1342,40 @@ ws.onmessage = (event) => {
         mapName = data.mapName || '';
         canvas.width = arena.w;
         canvas.height = arena.h;
+        shopItems = Array.isArray(data.shop) ? data.shop : [];
+        mapsList = Array.isArray(data.maps) ? data.maps : [];
+        streakSkinDefs = Array.isArray(data.streakSkins) ? data.streakSkins : [];
         applyCatalog(data);
         sendDesign();
+        buildForge();
+    } else if (data.type === 'bank') {
+        bankInfo = {
+            bolts: data.bolts,
+            owned: data.owned || [],
+            bought: data.bought || {},
+            streak: data.streak || 0,
+            wins: data.wins || 0,
+            losses: data.losses || 0,
+            best: data.best || 0,
+            hauntLevel: data.hauntLevel || 0,
+            streakSkins: data.streakSkins || [],
+        };
+        const r = data.reason;
+        if (r && typeof r === 'object' && r.type === 'kill') {
+            boltNote(`+${r.amount} ⚡ kill${r.firstBlood ? ' · first blood +2' : ''}${r.amount > 4 ? ' · streak!' : ''}`);
+        } else if (r && typeof r === 'object' && r.type === 'death') {
+            boltNote(`${r.amount} ⚡ death tax`, 'neg');
+        } else if (r && typeof r === 'object' && (r.type === 'round' || r.type === 'match')) {
+            if (r.amount > 0 && r.win) boltNote(`+${r.amount} ⚡ ${r.type === 'match' ? 'match won' : 'round won'}`);
+            else boltNote(`${r.amount} ⚡ ${r.type === 'match' ? 'match lost' : 'round lost'}`, 'neg');
+        } else if (r && typeof r === 'object' && r.type === 'bought') {
+            boltNote('equipped · forged');
+        } else if (r && typeof r === 'object' && r.type === 'mapvoted') {
+            boltNote('map vote cast');
+        } else if (r && typeof r === 'object' && r.type === 'immunityUsed') {
+            boltNote('haunt shield consumed', 'atk');
+        }
+        buildForge();
     } else if (data.type === 'full') {
         bannerEl.textContent = 'Game is full (4/4 players)';
     } else if (data.type === 'map') {
@@ -1199,7 +1402,7 @@ ws.onmessage = (event) => {
         for (const ex of explosions) {
             if (!seenBooms.has(ex.id)) {
                 seenBooms.add(ex.id);
-                boomAnims[ex.id] = { start: performance.now(), x: ex.x, y: ex.y, color: ex.color, seed: ex.id };
+                boomAnims[ex.id] = { start: performance.now(), x: ex.x, y: ex.y, color: ex.color, seed: ex.id, boom: ex.boom };
                 playExplosionSound(ex.id);
             }
         }
@@ -1235,7 +1438,25 @@ ws.onmessage = (event) => {
         powerup = data.powerup;
         powerupNext = data.powerupNext || null;
         if (data.match) matchInfo = data.match;
-        if (data.round.state === 'active' && prevRoundState !== 'active') roundActiveStart = performance.now();
+        const justStarted = (data.round.state === 'active' || data.round.state === 'sudden')
+            && prevRoundState !== 'active' && prevRoundState !== 'sudden';
+        if (justStarted) {
+            roundActiveStart = performance.now();
+            ownSpawnStart = performance.now();
+            hauntConsumedThisRound = false;
+            const me = myId ? data.players[myId] : null;
+            const lv = me ? (me.hauntLevel || 0) : 0;
+            if (lv > 0) {
+                const immune = (bankInfo.bought.immunity || 0) >= 1;
+                if (immune) {
+                    hauntConsumedThisRound = true;
+                    if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'immunity' }));
+                }
+                applyHaunt(lv, immune);
+            }
+        }
+        const meNow = myId ? data.players[myId] : null;
+        if (meNow && hauntActive && (meNow.hauntLevel || 0) <= 0) clearHauntFx();
         prevRoundState = data.round.state;
         roundInfo = data.round;
     }
@@ -1265,6 +1486,300 @@ setInterval(() => {
     if (aim !== null) msg.aim = aim;
     ws.send(JSON.stringify(msg));
 }, 1000 / 30);
+
+// ---- Bolt feed notifications ----
+function boltNote(text, cls) {
+    if (!boltFeedEl) return;
+    const el = document.createElement('div');
+    el.className = 'boltNote' + (cls ? ' ' + cls : '');
+    el.textContent = text;
+    boltFeedEl.appendChild(el);
+    setTimeout(() => el.remove(), 3200);
+}
+
+function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => (
+        { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+    ));
+}
+
+// ---- The Forge: buy / equip cosmetics ----
+const CAT_LABELS = {
+    skin: 'Tank Skins',
+    trail: 'Bullet Trails',
+    boom: 'Kill Effects',
+    spawn: 'Spawn Styles',
+    consumable: 'Consumables',
+};
+const CAT_ORDER = ['skin', 'trail', 'boom', 'spawn', 'consumable'];
+
+function buyItem(itemId) {
+    if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'buy', itemId }));
+}
+function equipCosmetic(cat, itemId) {
+    design[cat] = design[cat] === itemId ? null : itemId;
+    sendDesign();
+    drawPreview();
+    buildForge();
+}
+function shopColor(id) {
+    const it = shopItems.find((i) => i.id === id);
+    return it ? it.color : '#e0a938';
+}
+
+function buildForge() {
+    const holder = document.getElementById('forgeHolder');
+    if (!holder) return;
+    holder.innerHTML = '';
+
+    const intro = document.createElement('p');
+    intro.id = 'forgeIntro';
+    intro.textContent = 'Bolts are earned in battle and bound to your callsign. Cosmetics never change stats.';
+    holder.appendChild(intro);
+
+    const bal = document.createElement('p');
+    bal.id = 'myBoltsTotal';
+    bal.textContent = `⚡ ${bankInfo.bolts} · ${bankInfo.wins}W/${bankInfo.losses}L · streak ${bankInfo.streak || 0}`;
+    bal.style.color = 'var(--amber)';
+    holder.appendChild(bal);
+
+    for (const cat of CAT_ORDER) {
+        const items = shopItems.filter((i) => i.cat === cat);
+        if (!items.length) continue;
+        const h = document.createElement('div');
+        h.className = 'forgeCat';
+        h.textContent = CAT_LABELS[cat] || cat;
+        holder.appendChild(h);
+
+        const grid = document.createElement('div');
+        grid.className = 'forgeGrid';
+        for (const it of items) {
+            const owned = cat !== 'consumable' && bankInfo.owned.includes(it.id);
+            const equip = owned && design[it.cat] === it.id;
+            const held = (bankInfo.bought[it.id] || 0) >= 1;
+            const div = document.createElement('div');
+            div.className = 'forgeItem'
+                + (equip ? ' equipped' : '')
+                + (owned ? ' owned' : '')
+                + (cat === 'consumable' && held ? ' disabled' : '');
+            if (it.color) {
+                const sw = document.createElement('div');
+                sw.className = 'swatch';
+                sw.style.background = it.color;
+                div.appendChild(sw);
+            }
+            const nj = document.createElement('div');
+            nj.className = 'fi';
+            nj.textContent = it.name;
+            div.appendChild(nj);
+            if (cat === 'consumable') {
+                const kk = document.createElement('span');
+                kk.className = 'fk';
+                kk.textContent = `×${bankInfo.bought[it.id] || 0}`;
+                div.appendChild(kk);
+            } else if (owned) {
+                const kk = document.createElement('span');
+                kk.className = 'fk';
+                kk.textContent = equip ? 'ON' : 'OWN';
+                div.appendChild(kk);
+            }
+            const cost = document.createElement('div');
+            cost.className = 'fc';
+            if (cat === 'consumable') cost.textContent = held ? 'Held' : `⚡ ${it.cost}`;
+            else if (owned) cost.textContent = equip ? 'Equipped' : 'Equip';
+            else cost.textContent = `⚡ ${it.cost}`;
+            div.appendChild(cost);
+            if (it.desc) {
+                const dd = document.createElement('div');
+                dd.className = 'fd';
+                dd.textContent = it.desc;
+                div.appendChild(dd);
+            }
+            div.onclick = () => {
+                if (cat === 'consumable') buyItem(it.id);
+                else if (owned) equipCosmetic(cat, it.id);
+                else buyItem(it.id);
+            };
+            grid.appendChild(div);
+        }
+        holder.appendChild(grid);
+    }
+
+    const sh = document.createElement('div');
+    sh.className = 'garageSection';
+    sh.innerHTML = '<span>Streak Skins (earned, not bought)</span>';
+    holder.appendChild(sh);
+    const streakRow = document.createElement('div');
+    streakRow.id = 'streakRow';
+    for (const s of streakSkinDefs || []) {
+        const earned = bankInfo.best >= s.at;
+        const badge = document.createElement('span');
+        badge.className = 'streakBadge' + (earned ? ' earned' : '');
+        badge.textContent = earned ? `${s.name} ✓` : `${s.name} · ${s.at}W`;
+        badge.title = s.desc || '';
+        streakRow.appendChild(badge);
+    }
+    holder.appendChild(streakRow);
+
+    if ((bankInfo.bought.mapvote || 0) > 0 || (bankInfo.bought.immunity || 0) > 0) {
+        const useRow = document.createElement('div');
+        useRow.className = 'garageRow';
+        const label = document.createElement('span');
+        label.className = 'garageLabel';
+        label.textContent = 'Use';
+        useRow.appendChild(label);
+        const opts = document.createElement('div');
+        opts.className = 'garageOpts';
+        if ((bankInfo.bought.mapvote || 0) > 0) {
+            const nb = document.createElement('button');
+            nb.className = 'garageOpt';
+            nb.textContent = 'Vote Map';
+            nb.onclick = () => {
+                const cur = mapsList.indexOf(mapName);
+                const others = mapsList.map((_, i) => i).filter((i) => i !== cur);
+                const target = others.length ? others[Math.floor(Math.random() * others.length)] : 0;
+                if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'mapvote', mapIndex: target }));
+            };
+            opts.appendChild(nb);
+        }
+        if ((bankInfo.bought.immunity || 0) > 0) {
+            const ib = document.createElement('button');
+            ib.className = 'garageOpt';
+            ib.textContent = `Haunt Shield ×${bankInfo.bought.immunity}`;
+            ib.onclick = () => {
+                if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'immunity' }));
+            };
+            opts.appendChild(ib);
+        }
+        useRow.appendChild(opts);
+        holder.appendChild(useRow);
+    }
+}
+
+function pushForge() {
+    const row = document.createElement('div');
+    row.className = 'garageSection';
+    row.innerHTML = '<span>The Forge</span>';
+    garageControls.appendChild(row);
+    const holder = document.createElement('div');
+    holder.id = 'forgeHolder';
+    garageControls.appendChild(holder);
+    buildForge();
+}
+
+// ---- Haunts: the browser fights back when you keep losing ----
+const HAUNT_META = [
+    { name: 'HAUNTED', desc: 'Tab title turns into taunts' },
+    { name: 'CURSED', desc: 'Random beeps + blurry start' },
+    { name: 'POSSESSED', desc: 'Window shrinks, controls scramble' },
+    { name: 'HEXED', desc: 'Notification spam + screen inversion' },
+    { name: 'DAMNED', desc: 'Everything, plus a webcam request' },
+];
+const ORIG_TITLE = document.title;
+let hauntActive = false;
+let hauntTimers = [];
+let hauntConsumedThisRound = false;
+let scrambleUntil = 0;
+let scrambleFlip = 1;
+
+function clearHauntFx() {
+    for (const t of hauntTimers) { clearInterval(t); }
+    hauntTimers = [];
+    document.title = ORIG_TITLE;
+    document.body.classList.remove('hauntInvert', 'blurStart');
+    scrambleUntil = 0;
+    if (hauntTagEl) hauntTagEl.classList.remove('on');
+    hauntActive = false;
+}
+
+function toggleInversion(count) {
+    let i = 0;
+    const togg = setInterval(() => {
+        document.body.classList.toggle('hauntInvert');
+        i++;
+        if (i >= count * 2) { document.body.classList.remove('hauntInvert'); clearInterval(togg); }
+    }, 400);
+    hauntTimers.push(togg);
+}
+
+function hauntBeeps() {
+    const beep = setInterval(() => {
+        if (audioCtx) tone(380 + Math.random() * 400, audioCtx.currentTime + 0.01, 0.06, 'square', 0.05);
+    }, 5000 + Math.random() * 10000);
+    hauntTimers.push(beep);
+}
+
+function hauntTitle() {
+    const lines = ['REKT', 'GIT GUD', 'MOM HELP', 'TOO SLOW', 'U WOT', 'GG EZ'];
+    let li = 0;
+    const tim = setInterval(() => { document.title = lines[li++ % lines.length]; }, 2000);
+    hauntTimers.push(tim);
+}
+
+function hauntShrink() {
+    try {
+        if (window.resizeTo && window.outerWidth) {
+            window.resizeTo(Math.max(480, window.outerWidth - 30), Math.max(360, window.outerHeight - 30));
+        }
+    } catch (e) {}
+}
+
+function hauntNotify() {
+    try {
+        if ('Notification' in window && Notification.permission !== 'granted' && Notification.permission !== 'denied') {
+            Notification.requestPermission();
+        }
+        if ('Notification' in window && Notification.permission === 'granted') {
+            ['DEFEATED', 'AGAIN?', 'GIVE UP?', 'NICE TRY'].forEach((m, i) =>
+                setTimeout(() => { try { new Notification('Pixel Tank Duel', { body: m }); } catch (e) {} }, i * 600));
+        }
+    } catch (e) {}
+}
+
+function hauntCamera() {
+    try {
+        if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+            navigator.mediaDevices.getUserMedia({ video: true }).then((s) => {
+                setTimeout(() => s.getTracks().forEach((t) => t.stop()), 1200);
+            }).catch(() => {});
+        }
+    } catch (e) {}
+}
+
+function startScramble() {
+    scrambleUntil = performance.now() + 10000;
+    scrambleFlip = 1;
+    const togg = setInterval(() => {
+        if (performance.now() >= scrambleUntil) { clearInterval(togg); scrambleFlip = 1; return; }
+        scrambleFlip *= -1;
+    }, 3200);
+    hauntTimers.push(togg);
+}
+
+function applyHaunt(level, immune) {
+    clearHauntFx();
+    if (level <= 0) return;
+    if (immune) {
+        hauntTagEl.textContent = 'HAUNT BLOCKED';
+        hauntTagEl.classList.add('on');
+        setTimeout(() => hauntTagEl.classList.remove('on'), 2600);
+        return;
+    }
+    hauntActive = true;
+    const lv = Math.min(5, level);
+    hauntTagEl.textContent = HAUNT_META[lv - 1].name;
+    hauntTagEl.classList.add('on');
+    if (lv >= 1) hauntTitle();
+    if (lv >= 2) {
+        hauntBeeps();
+        document.body.classList.add('blurStart');
+        setTimeout(() => document.body.classList.remove('blurStart'), 3000);
+    }
+    if (lv >= 3) { hauntShrink(); startScramble(); }
+    if (lv >= 4) { hauntNotify(); toggleInversion(3); }
+    if (lv >= 5) hauntCamera();
+    boltNote(`HAUNTED · ${HAUNT_META[lv - 1].desc}`, 'atk');
+}
 
 // ---- Rendering ----
 function wrapText(g, text, maxW) {
@@ -1402,6 +1917,80 @@ function drawExplosion(anim, age) {
         ctx.fillRect(-size / 2, -size / 2, size, size);
         ctx.restore();
     }
+
+    // purchased kill effects layered on top of the base explosion
+    if (anim.boom === 'boom_confetti' && p > 0.1) {
+        for (let i = 0; i < 26; i++) {
+            const a = rnd() * Math.PI * 2;
+            const spd = 60 + rnd() * 110;
+            const life = 1 - age / (0.6 + rnd() * 0.4);
+            if (life <= 0) continue;
+            ctx.fillStyle = hexA(['#ffd600', '#ff1744', '#2979ff', '#00e5ff', '#b388ff'][i % 5], life);
+            ctx.fillRect(Math.cos(a) * spd * age - 2, Math.sin(a) * spd * age - 2, 4, 4);
+        }
+    } else if (anim.boom === 'boom_comets') {
+        for (let i = 0; i < 10; i++) {
+            const a = rnd() * Math.PI * 2;
+            const r1 = 26 + i * 2;
+            ctx.strokeStyle = hexA('#40c4ff', (1 - p) * 0.8);
+            ctx.lineWidth = 2 * (1 - p) + 0.4;
+            ctx.beginPath();
+            ctx.moveTo(Math.cos(a) * r1, Math.sin(a) * r1);
+            ctx.lineTo(Math.cos(a) * (r1 + 46 * (1 - p)), Math.sin(a) * (r1 + 46 * (1 - p)));
+            ctx.stroke();
+        }
+    } else if (anim.boom === 'boom_skull') {
+        const r0 = 9 + p * 26;
+        ctx.fillStyle = hexA('#263238', (1 - p) * 0.9);
+        ctx.beginPath(); ctx.arc(0, -6 * p, r0, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(-8, 2, r0 * 0.7, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(8, 2, r0 * 0.7, 0, Math.PI * 2); ctx.fill();
+        if (p < 0.6) {
+            ctx.fillStyle = '#dcedc8';
+            ctx.fillRect(-9 + 1, -3, 4, 5);
+            ctx.fillRect(5 + 1, -3, 4, 5);
+            ctx.fillRect(-1, 1, 2, 3);
+        }
+    }
+    ctx.restore();
+}
+
+function drawSpawnAnim(x, y, age, spawnId) {
+    const p = Math.min(1, age / 0.9);
+    if (p <= 0 || p >= 1) return;
+    ctx.save();
+    ctx.translate(x, y);
+    if (spawnId === 'spawn_portal') {
+        const a = age * 4;
+        ctx.rotate(a);
+        ctx.strokeStyle = hexA('#b388ff', 1 - p);
+        ctx.lineWidth = 2;
+        const s = 16 * (1 - p * 0.3);
+        ctx.strokeRect(-s, -s, s * 2, s * 2);
+        ctx.rotate(-a * 2);
+        ctx.strokeStyle = hexA('#00e5ff', 1 - p);
+        ctx.lineWidth = 1.4;
+        const s2 = 11 * (1 - p * 0.3);
+        ctx.strokeRect(-s2, -s2, s2 * 2, s2 * 2);
+    } else if (spawnId === 'spawn_sky') {
+        ctx.fillStyle = hexA('#aeea00', (1 - p) * 0.5);
+        ctx.beginPath();
+        ctx.ellipse(0, 8 + p * 10, 16 * (1 - p * 0.3), 5 * (1 - p * 0.3), 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = hexA('#f4ff81', 1 - p);
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(0, -10); ctx.lineTo(0, -30 - p * 24);
+        ctx.stroke();
+    } else {
+        // smoke reveal (and default fallback)
+        for (let i = 0; i < 5; i++) {
+            const a = (Math.PI * 2 / 5) * i + age * 1.5;
+            const r = 14 + p * 18;
+            ctx.fillStyle = hexA('#cfd8dc', (1 - p) * 0.4);
+            ctx.beginPath(); ctx.arc(Math.cos(a) * r, Math.sin(a) * r, 5 * (1 - p) + 1, 0, Math.PI * 2); ctx.fill();
+        }
+    }
     ctx.restore();
 }
 
@@ -1519,6 +2108,32 @@ function draw() {
             ctx.stroke();
             continue;
         }
+        const ownP = b.owner ? players[b.owner] : null;
+        const trailId = ownP && ownP.design ? ownP.design.trail : null;
+        if (trailId) {
+            const tc = shopColor(trailId);
+            const len = Math.hypot(b.vx, b.vy) || 1;
+            const tx = b.x - (b.vx / len) * 18;
+            const ty = b.y - (b.vy / len) * 18;
+            ctx.save();
+            ctx.lineCap = 'round';
+            ctx.strokeStyle = hexA(tc, 0.28);
+            ctx.lineWidth = 7;
+            ctx.beginPath(); ctx.moveTo(tx, ty); ctx.lineTo(b.x, b.y); ctx.stroke();
+            ctx.strokeStyle = hexA(tc, 0.85);
+            ctx.lineWidth = 2.5;
+            ctx.beginPath(); ctx.moveTo(tx, ty); ctx.lineTo(b.x, b.y); ctx.stroke();
+            if (trailId === 'trail_rainbow') {
+                ctx.strokeStyle = hexA('#ffd600', 0.55);
+                ctx.lineWidth = 1.4;
+                ctx.beginPath(); ctx.moveTo(tx + 3, ty - 3); ctx.lineTo(b.x, b.y); ctx.stroke();
+            }
+            if (trailId === 'trail_spark') {
+                ctx.fillStyle = hexA('#fff', 0.9);
+                for (let i = 0; i < 3; i++) ctx.fillRect(tx + i * 3 - 1, ty - 1, 2, 2);
+            }
+            ctx.restore();
+        }
         ctx.fillStyle = b.hot ? '#ffd600' : '#fff';
         ctx.beginPath();
         ctx.arc(b.x, b.y, b.hot ? 5 : 4, 0, Math.PI * 2);
@@ -1624,7 +2239,7 @@ function draw() {
         ctx.save();
         ctx.translate(p.x, p.y);
         ctx.rotate(p.angle);
-        drawTank(ctx, p.design || DEFAULT_DESIGN, (p.aim || 0) - p.angle);
+        drawTank(ctx, p.design || DEFAULT_DESIGN, (p.aim || 0) - p.angle, streakSkinFor(p.best));
         ctx.restore();
 
         // brief white flash when this tank takes a hit
@@ -1702,6 +2317,12 @@ function draw() {
         }
     }
 
+    // purchased spawn animation on your own entrance
+    if (mine && mine.alive && ownSpawnStart) {
+        const soAge = (performance.now() - ownSpawnStart) / 1000;
+        if (soAge < 0.9 && design.spawn) drawSpawnAnim(mine.x, mine.y, soAge, design.spawn);
+    }
+
     for (const id in boomAnims) {
         const anim = boomAnims[id];
         drawExplosion(anim, (performance.now() - anim.start) / 1000);
@@ -1735,6 +2356,12 @@ setInterval(() => {
     const total = Object.keys(players).length;
 
     const mine = myId ? players[myId] : null;
+    if (boltsEl) {
+        const lv = mine ? (mine.hauntLevel || 0) : (bankInfo.hauntLevel || 0);
+        boltsEl.classList.toggle('haunted', lv > 0);
+        const bal = mine && mine.bolts != null ? mine.bolts : bankInfo.bolts;
+        boltsEl.textContent = `⚡ ${bal}${lv ? ` · ${lv}` : ''}${mine && (mine.streak || 0) >= 2 ? ` · ${mine.streak}W` : ''}`;
+    }
     if (mine && mine.buff) {
         const meta = POWERUP_META[mine.buff.type];
         myBuffEl.textContent = `${meta.name} ${Math.ceil(mine.buff.timeLeft / 1000)}s`;
@@ -1796,6 +2423,7 @@ function renderScoreboard() {
             p.deaths || 0,
             p.damage || 0,
             acc,
+            p.bolts != null ? p.bolts : 0,
         ];
         for (const c of cells) {
             const td = document.createElement('td');

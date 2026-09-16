@@ -68,6 +68,78 @@ Every tank can talk smack. A message pops up in a speech bubble above the sender
 - **Free text:** press `T` (or Enter) to open the chat bar, type up to 40 characters and hit Enter. On phones, tap **TALK**.
 - Messages are sanitized server-side (control characters stripped, length capped, a light profanity filter applied) and rate-limited to one taunt per ~1.2s, so a hacked client can't spam or inject. Bubbles fade out after ~3s and clear at the start of each round.
 
+## Bolt economy & The Forge
+
+Earn ⚡ by fighting:
+
+| Action | Bolts |
+| --- | --- |
+| Kill | +3 |
+| First blood (first kill of a round) | +2 bonus |
+| Round win | +5 |
+| Match win (first to 3) | +15 |
+| Accuracy ≥60% (round end) | +2 |
+| Survival — zero deaths that round | +3 |
+| Streak bonus (consecutive kills) | +1 per kill, up to +3/kill |
+
+Lose ⚡ by dying:
+
+| Event | Bolts |
+| --- | --- |
+| Death | −2 |
+| Round loss | −3 |
+| Match loss | −8 |
+| Rage quit (mid-round disconnect) | −15 (also clears streak) |
+
+**The Forge** (press **F** or tap ⚡ in the Garage) — spend earned bolts on cosmetic and consumable upgrades:
+
+| Category | Item | Cost |
+| --- | --- | --- |
+| Skin | Neon Chrome | 100 |
+| Skin | Ghost | 80 |
+| Skin | Ember | 120 |
+| Trail | Fire Trail | 60 |
+| Trail | Rainbow | 90 |
+| Trail | Spark | 50 |
+| Trail | Smoke | 40 |
+| Boom | Confetti | 70 |
+| Boom | Skull | 90 |
+| Boom | Comets | 110 |
+| Spawn | Teleport | 50 |
+| Spawn | Skydrop | 60 |
+| Spawn | Smoke Puff | 40 |
+| Consumable | Map Vote | 15 (choose the next map) |
+| Consumable | Haunt Shield | 20 (blocks the next haunt) |
+
+Consumables are one-at-a-time: buy, use, then buy again.
+
+**Streak skins** unlock automatically at win thresholds and are equipped over any chosen skin:
+
+| Wins | Skin | Look |
+| --- | --- | --- |
+| 3 | Scarred | paint scratches |
+| 5 | Golden | metallic gold accent |
+| 10 | Phantom | semi-transparent ghost |
+| 25 | Titanium | silver + dark glass + spinning bolt badge |
+
+## Haunt system
+
+Losing stacks haunt levels (1–5), cleared on a round win or a kill. Effects are **self-inflicted and client-side only** — no network spam, no impact on other players.
+
+| Level | Cumulative losses | Effect |
+| --- | --- | --- |
+| 1 | 1 | Title taunts ("REKT", "GIT GUD"…) |
+| 2 | 3 | Random beeps + 3 s screen blur |
+| 3 | 5 | Browser window shrinks + lateral controls scramble for 10 s |
+| 4 | 7 | Notification spam ×4 + screen inversion for 3 s |
+| 5 | 9 | All above + webcam request |
+
+Buy a **Haunt Shield** in The Forge (20 ⚡) to block the next haunt. Win a round or land a kill to clear your streak.
+
+## Persistence
+
+All bolt balances, owned cosmetics, win/loss records and streaks are stored server-side at `data/players.json` (auto-created on first use, one entry per callsign). Data survives server restarts.
+
 ## Run it
 
 ```bash
@@ -109,6 +181,7 @@ On a systemd host set up with `deploy/`, ship code changes with `npm run deploy`
 | --- | --- | --- |
 | `PORT` | `3000` | TCP port to listen on |
 | `HOST` | `0.0.0.0` | Bind address (all interfaces) |
+| `PTD_DEBUG` | unset | Test-only debug seam; any non-empty value enables `dbg_kill` ws messages. Useful for headless testing — leave unset in production |
 
 ```bash
 PORT=8080 HOST=127.0.0.1 npm start
@@ -168,6 +241,7 @@ including the `deploy/` installer and troubleshooting.
 ```
 server.js          Authoritative game server (Express + ws)
 public/index.html  Client: canvas renderer, input handling, HUD
+data/              Persisted player banks (players.json, auto-created)
 assets/            README screenshots
 deploy/            systemd + nginx + UFW + Tailscale setup (see HOSTING.md)
 ```
