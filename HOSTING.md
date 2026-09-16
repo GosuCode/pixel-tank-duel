@@ -64,7 +64,7 @@ can reach it.
 ## 2. systemd service
 
 `deploy/pixel-tank.service` is a **template** (placeholders `@USER@`, `@DIR@`, `@NODE@`).
-The installer fills them in for the current user/repo/node and writes the real unit to
+Fill them in for the current user/repo/node and write the real unit to
 `/etc/systemd/system/pixel-tank.service`:
 
 ```ini
@@ -90,12 +90,6 @@ WantedBy=multi-user.target
 Install it:
 
 ```bash
-sudo bash deploy/setup-systemd.sh
-```
-
-Or by hand:
-
-```bash
 sed -e "s|@USER@|$USER|g" \
     -e "s|@DIR@|$PWD|g" \
     -e "s|@NODE@|$(command -v node)|g" \
@@ -106,7 +100,7 @@ systemctl status pixel-tank
 ```
 
 > **nvm gotcha:** the generated `ExecStart` points at a versioned nvm path. After
-> upgrading Node, re-run the installer and
+> upgrading Node, re-run the `sed` install above and
 > `sudo systemctl daemon-reload && sudo systemctl restart pixel-tank`.
 
 ---
@@ -224,8 +218,7 @@ ss -ltnp | grep ':3000\b'
 
 ## 6. Maintenance
 
-- **Deploy code changes:** `npm run deploy` (restarts the game service; no infra side effects)
-- **Restart after code changes:** `sudo systemctl restart pixel-tank`
+- **Deploy code changes:** `sudo systemctl restart pixel-tank`
 - **Restart the tunnel:** `sudo systemctl restart cloudflared`
 - **Stop public access:** `sudo systemctl stop cloudflared` (LAN access keeps working) or remove the public hostname
 - **Change the port:** set `PORT`/`HOST` in the systemd unit and update the tunnel route's service URL
@@ -251,19 +244,9 @@ Editing `public/index.html` needs no restart — it's served from disk, just rel
 ## Files
 
 ```
-deploy/setup-systemd.sh      one-shot installer (systemd service)
-deploy/redeploy.sh           restart the service (code changes)
-deploy/pixel-tank.service    systemd unit template
+deploy/pixel-tank.service    systemd unit template (fill @USER@/@DIR@/@NODE@, then install)
 ```
 
-For code changes (`server.js`, `lib/`, `deploy/pixel-tank.service`) use the lightweight redeploy:
-
-```bash
-npm run deploy
-```
-
-Re-run the installer only for first-time host setup or when the Node path changes:
-
-```bash
-sudo bash deploy/setup-systemd.sh
-```
+There are no deploy scripts — the service is managed directly with `systemctl`. Restart it after
+code changes (`sudo systemctl restart pixel-tank`) and re-run the `sed` install in §2 only for
+first-time host setup or when the Node path changes.

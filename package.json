@@ -5,8 +5,7 @@
   "description": "Local Wi-Fi 2D tank duel (2-4 players)",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js",
-    "deploy": "bash deploy/redeploy.sh"
+    "start": "node server.js"
   },
   "dependencies": {
     "express": "^4.19.2",

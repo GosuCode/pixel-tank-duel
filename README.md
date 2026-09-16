@@ -101,7 +101,7 @@ Run it on any host that keeps a persistent Node process with WebSocket support:
 
 The app has no other infra requirements — no database, no build step. Just `npm install && npm start`.
 
-On a systemd host set up with `deploy/`, ship code changes with `npm run deploy` (restarts the service). Editing `public/index.html` alone needs no restart — just reload the browser. See [HOSTING.md](HOSTING.md) for the full setup.
+On a systemd host, restart the service after code changes with `sudo systemctl restart pixel-tank`. Editing `public/index.html` alone needs no restart — just reload the browser. See [HOSTING.md](HOSTING.md) for the full setup.
 
 ### Configuration
 
@@ -136,5 +136,5 @@ public/index.html  Client: canvas renderer, input handling, HUD
 data/              Persisted player banks (players.json, auto-created)
 docs/              Gameplay, economy and haunt documentation
 assets/            README screenshots
-deploy/            systemd unit + setup/redeploy scripts (see HOSTING.md)
+deploy/            systemd unit (see HOSTING.md)
 ```
