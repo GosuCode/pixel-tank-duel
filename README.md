@@ -151,7 +151,8 @@ including the `deploy/` installer and troubleshooting.
 ## Project structure
 
 ```
-server.js          Authoritative game server (Express + ws)
+server.js          Server wiring: HTTP/static + WebSocket + room dispatch
+lib/               Game modules (config, catalog, design, bank, room, rooms)
 public/index.html  Client: canvas renderer, input handling, HUD
 data/              Persisted player banks (players.json, auto-created)
 docs/              Gameplay, economy and haunt documentation
