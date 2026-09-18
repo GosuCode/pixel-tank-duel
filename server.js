@@ -5,7 +5,7 @@ const { WebSocketServer } = require('ws');
 const http = require('http');
 
 const { TICK_MS } = require('./lib/config');
-const { sanitizeRoomCode, getRoom, createRoomWithVisibility, createSandboxRoom, listOpenRooms, tickRooms } = require('./lib/rooms');
+const { sanitizeRoomCode, getRoom, createRoomWithVisibility, createSandboxRoom, listOpenRooms, totalPlayers, tickRooms } = require('./lib/rooms');
 
 const PORT = Number(process.env.PORT) || 3000;
 const HOST = process.env.HOST || '0.0.0.0';
@@ -19,7 +19,7 @@ app.use(express.static('public'));
 
 // ---- Lobby API ----
 app.get('/api/rooms', (req, res) => {
-  res.json({ rooms: listOpenRooms() });
+  res.json({ rooms: listOpenRooms(), totalPlayers: totalPlayers() });
 });
 
 app.post('/api/rooms', (req, res) => {

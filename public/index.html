@@ -5,6 +5,20 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Pixel Tank Duel</title>
 <style>
+    @font-face {
+        font-family: 'Silkscreen';
+        font-style: normal;
+        font-weight: 400;
+        font-display: swap;
+        src: url('/fonts/silkscreen-400.woff2') format('woff2');
+    }
+    @font-face {
+        font-family: 'Silkscreen';
+        font-style: normal;
+        font-weight: 700;
+        font-display: swap;
+        src: url('/fonts/silkscreen-700.woff2') format('woff2');
+    }
     :root {
         --bg: #0b0c0a;
         --panel: #13150f;
@@ -16,7 +30,8 @@
         --amber-dim: #8a6a24;
         --olive: #7f8a52;
         --red: #c14b32;
-        --mono: ui-monospace, 'SFMono-Regular', Menlo, Consolas, 'Liberation Mono', monospace;
+        --mono: 'Silkscreen', ui-monospace, 'SFMono-Regular', Menlo, Consolas, 'Liberation Mono', monospace;
+        --ui-mono: ui-monospace, 'SFMono-Regular', Menlo, Consolas, 'Liberation Mono', monospace;
     }
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
     html, body {
@@ -268,6 +283,8 @@
     #garageLeftCol { display: flex; flex-direction: column; gap: 16px; flex: 0 0 300px; }
     #garageControls { flex: 0 0 auto; min-width: 0; }
     #garageForgeCol { flex: 1 1 420px; min-width: 0; }
+    /* Forge + Streak Skins use the normal monospace, not the pixel font */
+    #garageForgeCol, #garageForgeCol * { font-family: var(--ui-mono); }
     .garageRow { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
     .garageLabel { width: 54px; flex: 0 0 auto; font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--muted); }
     .garageOpts { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -624,6 +641,13 @@
         text-transform: uppercase;
         color: var(--muted);
     }
+    #lobbyOnline {
+        margin: 8px 0 0;
+        font-size: 11px;
+        letter-spacing: 0.22em;
+        text-transform: uppercase;
+        color: var(--amber);
+    }
     #lobbyBody { display: flex; gap: 28px; align-items: flex-start; flex-wrap: wrap; }
     #lobbyCreate { flex: 0 0 300px; display: flex; flex-direction: column; gap: 8px; }
     #lobbyCreate .garageSection:first-child { margin-top: 0; }
@@ -835,6 +859,7 @@
         <header id="lobbyHead">
             <h1>Pixel Tank Duel</h1>
             <p class="sub">Choose a battle</p>
+            <p id="lobbyOnline"></p>
         </header>
         <div id="lobbyBody">
             <section id="lobbyCreate">
@@ -1159,19 +1184,33 @@ function roundRect(g, x, y, w, h, r) {
     g.closePath();
 }
 
+// Pixel silhouettes: each entry is one 2px-tall row as [x0, x1].
+const HULL_ROWS = {
+    classic: [[-12, 12], [-14, 14], [-14, 14], [-14, 14], [-14, 14], [-14, 14], [-14, 14], [-14, 14], [-14, 14], [-14, 14], [-12, 12]],
+    round: [[-8, 8], [-11, 11], [-12, 12], [-13, 13], [-14, 14], [-14, 14], [-14, 14], [-13, 13], [-12, 12], [-11, 11], [-8, 8]],
+    wedge: [[-12, 6], [-13, 9], [-13, 11], [-14, 13], [-14, 14], [-14, 14], [-14, 14], [-14, 13], [-13, 11], [-13, 9], [-12, 6]],
+};
+const TURRET_ROWS = {
+    square: [[-5, 9], [-5, 9], [-5, 9], [-5, 9], [-5, 9], [-5, 9], [-5, 9], [-5, 9]],
+    round: [[-3, 5], [-5, 7], [-6, 8], [-7, 9], [-7, 9], [-6, 8], [-5, 7], [-3, 5]],
+    dome: [[-4, 6], [-6, 8], [-7, 9], [-8, 10], [-8, 10], [-7, 9], [-6, 8], [-4, 6]],
+};
+
+// Fill a pixel silhouette, optionally padded outward to form a hard outline.
+function pixelRows(g, rows, y0, color, padX, padY) {
+    g.fillStyle = color;
+    for (let r = 0; r < rows.length; r++) {
+        const [x0, x1] = rows[r];
+        g.fillRect(x0 - padX, y0 + r * 2 - padY, (x1 - x0) + padX * 2, 2 + padY * 2);
+    }
+}
+
 function hullPath(g, shape) {
-    if (shape === 'wedge') {
-        g.beginPath();
-        g.moveTo(-14, -11);
-        g.lineTo(8, -11);
-        g.lineTo(14, 0);
-        g.lineTo(8, 11);
-        g.lineTo(-14, 11);
-        g.closePath();
-    } else if (shape === 'round') {
-        roundRect(g, -14, -11, 28, 22, 8);
-    } else {
-        roundRect(g, -14, -11, 28, 22, 4);
+    const rows = HULL_ROWS[shape] || HULL_ROWS.classic;
+    g.beginPath();
+    for (let r = 0; r < rows.length; r++) {
+        const [x0, x1] = rows[r];
+        g.rect(x0, -11 + r * 2, x1 - x0, 2);
     }
 }
 
@@ -1195,92 +1234,65 @@ function drawTank(g, d, turretOffset = 0, streak = null, recoil = 0) {
     const phantom = streak === 'phantom' || d.skin === 'skin_ghost';
 
     if (d.treads === 'treads') {
-        for (const ty of [-15, 9]) {
-            roundRect(g, -15, ty, 30, 6, 2.5);
-            g.fillStyle = '#454d5c';
-            g.fill();
-            g.fillStyle = '#20242c';
-            for (const tx of [-11, -6, -1, 4, 9]) g.fillRect(tx, ty + 1.5, 2, 3);
+        g.fillStyle = '#14170f';
+        g.fillRect(-15, -16, 30, 7);
+        g.fillRect(-15, 9, 30, 7);
+        g.fillStyle = '#454d5c';
+        g.fillRect(-14, -15, 28, 5);
+        g.fillRect(-14, 10, 28, 5);
+        g.fillStyle = '#20242c';
+        for (const tx of [-12, -7, -2, 3, 8]) {
+            g.fillRect(tx, -14, 2, 3);
+            g.fillRect(tx, 11, 2, 3);
         }
     } else if (d.treads === 'wheels') {
         g.fillStyle = '#454d5c';
-        for (const wx of [-10, 0, 10]) {
-            g.beginPath(); g.arc(wx, -12.5, 3.5, 0, Math.PI * 2); g.fill();
-            g.beginPath(); g.arc(wx, 12.5, 3.5, 0, Math.PI * 2); g.fill();
-        }
+        for (const wx of [-10, 0, 10]) { g.fillRect(wx - 4, -16, 8, 7); g.fillRect(wx - 4, 9, 8, 7); }
         g.fillStyle = '#20242c';
-        for (const wx of [-10, 0, 10]) {
-            g.beginPath(); g.arc(wx, -12.5, 1.5, 0, Math.PI * 2); g.fill();
-            g.beginPath(); g.arc(wx, 12.5, 1.5, 0, Math.PI * 2); g.fill();
-        }
+        for (const wx of [-10, 0, 10]) { g.fillRect(wx - 2, -14, 4, 3); g.fillRect(wx - 2, 11, 4, 3); }
     }
 
+    // hull: hard 2px outline over a flat pixel silhouette
+    const rows = HULL_ROWS[d.hull] || HULL_ROWS.classic;
+    const outline = streak === 'golden' ? '#ffd600' : streak === 'titanium' ? '#9fb4c8' : '#14170f';
     g.save();
     if (phantom) g.globalAlpha = 0.55;
-    hullPath(g, d.hull);
-    if (d.hull === 'wedge') {
-        g.strokeStyle = body;
-        g.lineJoin = 'round';
-        g.lineWidth = 4;
-        g.stroke();
-    }
-    g.fillStyle = body;
-    g.fill();
-    hullPath(g, d.hull);
-    g.clip();
+    pixelRows(g, rows, -11, outline, 2, 2);
+    pixelRows(g, rows, -11, body, 0, 0);
     g.fillStyle = mid;
-    g.fillRect(-15, -14, 30, 7);
-    g.restore();
-
-    // scarred: battle scratches across the armor
+    g.fillRect(-9, -8, 18, 3);
     if (streak === 'scarred') {
-        g.save();
-        g.strokeStyle = 'rgba(20,24,14,0.85)';
-        g.lineWidth = 1.2;
-        g.beginPath();
-        g.moveTo(-10, -4); g.lineTo(-3, 1); g.lineTo(-7, 7);
-        g.moveTo(3, -8); g.lineTo(10, -2); g.lineTo(6, 5);
-        g.moveTo(-1, -2); g.lineTo(5, 3);
-        g.stroke();
-        g.restore();
+        g.fillStyle = 'rgba(20,24,14,0.85)';
+        g.fillRect(-9, -5, 2, 4);
+        g.fillRect(-5, 0, 2, 4);
+        g.fillRect(-1, -3, 2, 3);
+        g.fillRect(3, -6, 2, 4);
+        g.fillRect(7, -1, 2, 4);
     }
-    // golden/titanium: accent trim
-    if (streak === 'golden' || streak === 'titanium') {
-        g.save();
-        hullPath(g, d.hull);
-        g.strokeStyle = streak === 'golden' ? '#ffd600' : '#9fb4c8';
-        g.lineWidth = 1.6;
-        g.stroke();
-        g.restore();
-    }
+    g.restore();
 
     // turret + barrel rotate independently of the hull
     g.save();
     if (phantom) g.globalAlpha = 0.55;
     g.rotate(turretOffset);
-    g.fillStyle = dark;
-    if (d.turret === 'round') {
-        g.beginPath(); g.arc(1, 0, 8, 0, Math.PI * 2); g.fill();
-    } else if (d.turret === 'dome') {
-        g.beginPath(); g.arc(1, 0, 9, 0, Math.PI * 2); g.fill();
+    const turret = TURRET_ROWS[d.turret] || TURRET_ROWS.square;
+    pixelRows(g, turret, -8, '#14170f', 2, 2);
+    pixelRows(g, turret, -8, dark, 0, 0);
+    if (d.turret === 'dome') {
         g.fillStyle = mid;
-        g.beginPath(); g.arc(1, 0, 5, 0, Math.PI * 2); g.fill();
-    } else {
-        roundRect(g, -5, -8, 14, 16, 3);
-        g.fill();
+        g.fillRect(-2, -3, 6, 6);
     }
 
     const bl = BARREL_LEN[d.barrel] || BARREL_LEN.medium;
     const bx = 5 - recoil;
-    g.fillStyle = dark;
-    roundRect(g, bx, -3, bl, 6, 3);
-    g.fill();
-    g.fillStyle = mid;
-    roundRect(g, bx, -3, bl, 2, 1);
-    g.fill();
     g.fillStyle = '#111';
-    roundRect(g, bx + bl - 3, -4, 3, 8, 1.5);
-    g.fill();
+    g.fillRect(bx - 1, -4, bl + 2, 8);
+    g.fillStyle = dark;
+    g.fillRect(bx, -3, bl, 6);
+    g.fillStyle = mid;
+    g.fillRect(bx, -3, bl, 2);
+    g.fillStyle = '#111';
+    g.fillRect(bx + bl - 3, -4, 3, 8);
     g.restore();
 }
 
@@ -2293,7 +2305,7 @@ function wrapText(g, text, maxW) {
 
 function drawTauntBubble(p, text, age) {
     ctx.save();
-    ctx.font = 'bold 12px ui-monospace, monospace';
+    ctx.font = 'bold 12px Silkscreen, ui-monospace, monospace';
     const lines = wrapText(ctx, text, 130);
     const lineH = 15;
     let maxW = 0;
@@ -2350,14 +2362,12 @@ function drawHealthBar(x, topY, hp, maxHp) {
     const total = maxHp * segW + (maxHp - 1) * gap;
     const left = x - total / 2;
     ctx.fillStyle = 'rgba(0,0,0,0.6)';
-    roundRect(ctx, left - 2, topY - 2, total + 4, h + 4, 2.5);
-    ctx.fill();
+    ctx.fillRect(left - 2, topY - 2, total + 4, h + 4);
     const fillColor = hp >= maxHp ? '#2ECC40' : hp === 1 ? '#c14b32' : '#e0a938';
     for (let i = 0; i < maxHp; i++) {
         const sx = left + i * (segW + gap);
         ctx.fillStyle = i < hp ? fillColor : 'rgba(255,255,255,0.13)';
-        roundRect(ctx, sx, topY, segW, h, 1.5);
-        ctx.fill();
+        ctx.fillRect(sx, topY, segW, h);
     }
 }
 
@@ -2532,24 +2542,23 @@ function draw() {
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         let size = Math.floor(canvas.width * 0.18);
-        ctx.font = `bold ${size}px ui-monospace, monospace`;
+        ctx.font = `bold ${size}px Silkscreen, ui-monospace, monospace`;
         const maxW = canvas.width * 0.9;
         const w = ctx.measureText(hauntWord).width;
         if (w > maxW) {
             size = Math.max(24, Math.floor(size * (maxW / w)));
-            ctx.font = `bold ${size}px ui-monospace, monospace`;
+            ctx.font = `bold ${size}px Silkscreen, ui-monospace, monospace`;
         }
         ctx.fillText(hauntWord, canvas.width / 2, canvas.height / 2);
         ctx.restore();
     }
 
     for (const o of obstacles) {
-        roundRect(ctx, o.x, o.y, o.w, o.h, Math.min(4, o.w / 2, o.h / 2));
         ctx.fillStyle = '#242819';
-        ctx.fill();
+        ctx.fillRect(o.x, o.y, o.w, o.h);
         ctx.strokeStyle = '#3b4129';
         ctx.lineWidth = 1;
-        ctx.stroke();
+        ctx.strokeRect(o.x + 0.5, o.y + 0.5, o.w - 1, o.h - 1);
     }
 
     if (holes.length) {
@@ -2573,7 +2582,7 @@ function draw() {
         ctx.fill();
         ctx.globalAlpha = 1;
         ctx.fillStyle = '#111';
-        ctx.font = 'bold 13px sans-serif';
+        ctx.font = 'bold 13px Silkscreen, ui-monospace, monospace';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText(meta.label, powerup.x, powerup.y + 1);
@@ -2593,7 +2602,7 @@ function draw() {
         ctx.setLineDash([]);
         ctx.globalAlpha = 0.9;
         ctx.fillStyle = meta.color;
-        ctx.font = 'bold 10px ui-monospace, monospace';
+        ctx.font = 'bold 10px Silkscreen, ui-monospace, monospace';
         ctx.textAlign = 'center';
         ctx.fillText(Math.ceil(powerupNext.timeLeft / 1000) + 's', powerupNext.x, powerupNext.y - 22);
         ctx.restore();
@@ -2831,12 +2840,12 @@ function draw() {
         ctx.textAlign = 'center';
         if (label) {
             ctx.fillStyle = p.design.color;
-            ctx.font = 'bold 11px ui-monospace, monospace';
+            ctx.font = 'bold 11px Silkscreen, ui-monospace, monospace';
             ctx.fillText(label, p.x, p.y - 34);
         }
         const starY = label ? p.y - 46 : p.y - 34;
         ctx.fillStyle = '#e0a938';
-        ctx.font = '11px ui-monospace, monospace';
+        ctx.font = '11px Silkscreen, ui-monospace, monospace';
         ctx.fillText(`★${p.kills}`, p.x, starY);
 
         if (p.buff) {
@@ -2846,7 +2855,7 @@ function draw() {
             ctx.fillStyle = meta.color;
             ctx.fill();
             ctx.fillStyle = '#111';
-            ctx.font = 'bold 9px sans-serif';
+            ctx.font = 'bold 9px Silkscreen, ui-monospace, monospace';
             ctx.textBaseline = 'middle';
             ctx.fillText(meta.label, p.x, starY - 11);
             ctx.textBaseline = 'alphabetic';
@@ -2933,7 +2942,7 @@ function draw() {
         if (age > 0.7) { damageNumbers.splice(i, 1); continue; }
         const y = dn.y - 30 - age * 26;
         ctx.globalAlpha = 1 - age / 0.7;
-        ctx.font = 'bold 13px ui-monospace, monospace';
+        ctx.font = 'bold 13px Silkscreen, ui-monospace, monospace';
         ctx.textAlign = 'center';
         ctx.lineWidth = 3;
         ctx.strokeStyle = 'rgba(0,0,0,0.8)';
@@ -3051,6 +3060,7 @@ const lobbyEl = document.getElementById('lobby');
 const lobbyListEl = document.getElementById('lobbyList');
 const lobbyMsgEl = document.getElementById('lobbyMsg');
 const lobbyCodeInput = document.getElementById('lobbyCodeInput');
+const lobbyOnlineEl = document.getElementById('lobbyOnline');
 
 function showLobby(msg) {
     lobbyEl.classList.remove('hidden');
@@ -3075,6 +3085,8 @@ async function refreshLobby() {
         const res = await fetch('/api/rooms');
         const data = await res.json();
         renderLobbyRooms(data.rooms || []);
+        const n = data.totalPlayers || 0;
+        if (lobbyOnlineEl) lobbyOnlineEl.textContent = `${n} player${n === 1 ? '' : 's'} online`;
     } catch (e) {
         lobbyMsgEl.textContent = 'Could not load rooms';
     }
