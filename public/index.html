@@ -1012,6 +1012,10 @@ const seenFires = new Set(); // muzzle-event ids already reacted to
 const muzzleFlashes = []; // { x, y, angle, start, by } transient muzzle flashes
 const barrelKick = {}; // playerId -> performance.now() of last shot (barrel recoil anim)
 const damageNumbers = []; // { x, y, text, color, start }
+const shells = []; // { x, y, vx, vy, angle, start } ejected shell casings
+const treadPhase = {}; // playerId -> distance rolled (drives tread scroll)
+const prevPos = {}; // playerId -> { x, y } last frame, for tread animation
+let floorCanvas = null; // pre-rendered warzone floor texture
 let hitMark = { start: 0, kill: false }; // shooter hitmarker
 let hurtFlashAt = 0; // performance.now() when we last took damage
 let shakeUntil = 0; // screen shake window
@@ -1220,7 +1224,8 @@ function streakSkinFor(best) {
     return out;
 }
 
-function drawTank(g, d, turretOffset = 0, streak = null, recoil = 0) {
+function drawTank(g, d, turretOffset = 0, streak = null, recoil = 0, opts = {}) {
+    const tread = opts.tread || 0;
     let body = d.color;
     if (d.skin === 'skin_camo') body = '#6b7d3a';
     else if (d.skin === 'skin_neon') body = '#00e5ff';
@@ -1241,7 +1246,9 @@ function drawTank(g, d, turretOffset = 0, streak = null, recoil = 0) {
         g.fillRect(-14, -15, 28, 5);
         g.fillRect(-14, 10, 28, 5);
         g.fillStyle = '#20242c';
-        for (const tx of [-12, -7, -2, 3, 8]) {
+        const shift = ((Math.round(tread) % 5) + 5) % 5;
+        for (const base of [-12, -7, -2, 3, 8]) {
+            const tx = base + shift;
             g.fillRect(tx, -14, 2, 3);
             g.fillRect(tx, 11, 2, 3);
         }
@@ -1847,6 +1854,7 @@ function handleMessage(event) {
         }
         canvas.width = arena.w;
         canvas.height = arena.h;
+        buildFloor();
         shopItems = Array.isArray(data.shop) ? data.shop : [];
         mapsList = Array.isArray(data.maps) ? data.maps : [];
         streakSkinDefs = Array.isArray(data.streakSkins) ? data.streakSkins : [];
@@ -1972,6 +1980,14 @@ function handleMessage(event) {
             seenFires.add(f.id);
             playFireSound();
             muzzleFlashes.push({ x: f.x, y: f.y, angle: f.angle, start: performance.now(), by: f.by });
+            const eject = f.angle + (Math.random() < 0.5 ? 1 : -1) * (Math.PI / 2);
+            shells.push({
+                x: f.x, y: f.y,
+                vx: Math.cos(eject) * 2.2 - Math.cos(f.angle) * 0.8,
+                vy: Math.sin(eject) * 2.2 - Math.sin(f.angle) * 0.8,
+                angle: eject, start: performance.now(),
+            });
+            if (shells.length > 40) shells.shift();
             barrelKick[f.by] = performance.now();
             // a camera kick on every shot: strongest for your own cannon
             const me = myId ? players[myId] : null;
@@ -2380,6 +2396,98 @@ function mulberry32(a) {
     };
 }
 
+// pre-render the neon-cyber arena floor once: void, glowing grid, circuits, scanlines
+function buildFloor() {
+    const w = canvas.width, h = canvas.height;
+    const c = document.createElement('canvas');
+    c.width = w; c.height = h;
+    const g = c.getContext('2d');
+    const rnd = mulberry32(0x51ee7);
+
+    // deep void base with a faint violet bloom toward the middle
+    g.fillStyle = '#05060d';
+    g.fillRect(0, 0, w, h);
+    const bg = g.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, Math.max(w, h) * 0.62);
+    bg.addColorStop(0, 'rgba(34,22,72,0.6)');
+    bg.addColorStop(0.5, 'rgba(12,10,34,0.45)');
+    bg.addColorStop(1, 'rgba(0,0,0,0.65)');
+    g.fillStyle = bg;
+    g.fillRect(0, 0, w, h);
+
+    // glowing neon grid (major lines every 4th cell)
+    const step = 40;
+    g.save();
+    g.shadowBlur = 6;
+    for (let i = 0, x = 0; x <= w; x += step, i++) {
+        const major = i % 4 === 0;
+        g.strokeStyle = major ? 'rgba(255,43,214,0.22)' : 'rgba(0,229,255,0.11)';
+        g.shadowColor = major ? 'rgba(255,43,214,0.55)' : 'rgba(0,229,255,0.4)';
+        g.lineWidth = major ? 2 : 1;
+        g.beginPath();
+        g.moveTo(Math.round(x) + 0.5, 0);
+        g.lineTo(Math.round(x) + 0.5, h);
+        g.stroke();
+    }
+    for (let i = 0, y = 0; y <= h; y += step, i++) {
+        const major = i % 4 === 0;
+        g.strokeStyle = major ? 'rgba(255,43,214,0.22)' : 'rgba(0,229,255,0.11)';
+        g.shadowColor = major ? 'rgba(255,43,214,0.55)' : 'rgba(0,229,255,0.4)';
+        g.lineWidth = major ? 2 : 1;
+        g.beginPath();
+        g.moveTo(0, Math.round(y) + 0.5);
+        g.lineTo(w, Math.round(y) + 0.5);
+        g.stroke();
+    }
+    g.restore();
+
+    // circuit traces with solder nodes
+    for (let t = 0; t < 20; t++) {
+        let x = Math.round((rnd() * w) / step) * step;
+        let y = Math.round((rnd() * h) / step) * step;
+        const horiz = rnd() < 0.5;
+        const neon = rnd() < 0.5 ? '0,229,255' : '255,43,214';
+        g.strokeStyle = `rgba(${neon},0.16)`;
+        g.lineWidth = 1;
+        g.beginPath();
+        g.moveTo(Math.round(x) + 0.5, Math.round(y) + 0.5);
+        const segs = 2 + ((rnd() * 4) | 0);
+        for (let s = 0; s < segs; s++) {
+            const len = (1 + ((rnd() * 3) | 0)) * step * (rnd() < 0.5 ? -1 : 1);
+            if ((s % 2 === 0) === horiz) x += len; else y += len;
+            g.lineTo(Math.round(x) + 0.5, Math.round(y) + 0.5);
+        }
+        g.stroke();
+        g.fillStyle = `rgba(${neon},0.4)`;
+        g.fillRect(Math.round(x) - 2, Math.round(y) - 2, 4, 4);
+    }
+
+    // center emblem: pixel diamond + bracket frame
+    g.save();
+    g.translate(w / 2, h / 2);
+    g.strokeStyle = 'rgba(0,229,255,0.15)';
+    g.lineWidth = 2;
+    g.strokeRect(-92, -92, 184, 184);
+    g.strokeStyle = 'rgba(255,43,214,0.18)';
+    g.beginPath();
+    g.moveTo(0, -124); g.lineTo(124, 0); g.lineTo(0, 124); g.lineTo(-124, 0);
+    g.closePath();
+    g.stroke();
+    g.restore();
+
+    // CRT scanlines
+    g.fillStyle = 'rgba(0,0,0,0.22)';
+    for (let y = 0; y < h; y += 3) g.fillRect(0, y, w, 1);
+
+    // edge vignette
+    const vg = g.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.35, w / 2, h / 2, Math.max(w, h) * 0.7);
+    vg.addColorStop(0, 'rgba(0,0,0,0)');
+    vg.addColorStop(1, 'rgba(0,0,0,0.72)');
+    g.fillStyle = vg;
+    g.fillRect(0, 0, w, h);
+
+    floorCanvas = c;
+}
+
 function drawExplosion(anim, age) {
     const p = Math.min(1, age / 0.9);
     const rnd = mulberry32((anim.seed * 2654435761) >>> 0);
@@ -2520,19 +2628,27 @@ function draw() {
     const hurtAge = nowMs - hurtFlashAt;
     hurtVignetteEl.style.opacity = hurtAge < 400 ? String(Math.max(0, 1 - hurtAge / 400) * 0.9) : '0';
 
-    ctx.strokeStyle = 'rgba(127,138,82,0.07)';
-    ctx.lineWidth = 1;
-    const grid = 40;
-    ctx.beginPath();
-    for (let x = grid; x < canvas.width; x += grid) {
-        ctx.moveTo(x + 0.5, 0);
-        ctx.lineTo(x + 0.5, canvas.height);
+    // pre-rendered warzone floor
+    if (floorCanvas) ctx.drawImage(floorCanvas, 0, 0);
+
+    // ejected casings resting on the ground
+    for (let i = shells.length - 1; i >= 0; i--) {
+        const s = shells[i];
+        const age = nowMs - s.start;
+        if (age > 700) { shells.splice(i, 1); continue; }
+        s.x += s.vx;
+        s.y += s.vy;
+        s.vx *= 0.9;
+        s.vy *= 0.9;
+        s.angle += 0.22;
+        ctx.save();
+        ctx.translate(s.x, s.y);
+        ctx.rotate(s.angle);
+        ctx.globalAlpha = Math.max(0, 1 - age / 700);
+        ctx.fillStyle = '#e0a938';
+        ctx.fillRect(-1, -1, 2, 3);
+        ctx.restore();
     }
-    for (let y = grid; y < canvas.height; y += grid) {
-        ctx.moveTo(0, y + 0.5);
-        ctx.lineTo(canvas.width, y + 0.5);
-    }
-    ctx.stroke();
 
     // haunted: curse words scrawled across the arena floor (drawn over the tiles)
     if (hauntWord && nowMs < hauntTextUntil) {
@@ -2554,9 +2670,11 @@ function draw() {
     }
 
     for (const o of obstacles) {
-        ctx.fillStyle = '#242819';
+        ctx.fillStyle = '#0d1024';
         ctx.fillRect(o.x, o.y, o.w, o.h);
-        ctx.strokeStyle = '#3b4129';
+        ctx.fillStyle = 'rgba(0,229,255,0.08)';
+        ctx.fillRect(o.x + 2, o.y + 2, o.w - 4, o.h - 4);
+        ctx.strokeStyle = 'rgba(0,229,255,0.55)';
         ctx.lineWidth = 1;
         ctx.strokeRect(o.x + 0.5, o.y + 0.5, o.w - 1, o.h - 1);
     }
@@ -2765,6 +2883,29 @@ function draw() {
         }
     }
 
+    // drop shadow + fake 2px extrusion, drawn under every tank before the bodies
+    for (const id in players) {
+        const p = players[id];
+        if (!p.alive) continue;
+        const hull = (p.design || DEFAULT_DESIGN).hull;
+        ctx.save();
+        ctx.translate(p.x, p.y + 3);
+        ctx.rotate(p.angle);
+        ctx.scale(1.2, 1.2);
+        ctx.globalAlpha = 0.5;
+        ctx.fillStyle = '#000';
+        hullPath(ctx, hull);
+        ctx.fill();
+        ctx.restore();
+        ctx.save();
+        ctx.translate(p.x, p.y + 2);
+        ctx.rotate(p.angle);
+        ctx.fillStyle = '#14170f';
+        hullPath(ctx, hull);
+        ctx.fill();
+        ctx.restore();
+    }
+
     for (const id in players) {
         const p = players[id];
         if (!p.alive) continue;
@@ -2798,10 +2939,14 @@ function draw() {
         ctx.save();
         ctx.translate(p.x, p.y);
         ctx.rotate(p.angle);
+        const prev = prevPos[id];
+        const rolled = prev ? Math.hypot(p.x - prev.x, p.y - prev.y) : 0;
+        treadPhase[id] = (treadPhase[id] || 0) + rolled;
+        prevPos[id] = { x: p.x, y: p.y };
         const kickAt = barrelKick[id];
         const kickMax = p.buff && p.buff.type === 'triple' ? 10 : p.buff && p.buff.type === 'laser' ? 6 : 4;
         const kick = kickAt ? Math.max(0, 1 - (performance.now() - kickAt) / 130) * kickMax : 0;
-        drawTank(ctx, p.design || DEFAULT_DESIGN, (p.aim || 0) - p.angle, streakSkinFor(p.best), kick);
+        drawTank(ctx, p.design || DEFAULT_DESIGN, (p.aim || 0) - p.angle, streakSkinFor(p.best), kick, { tread: treadPhase[id] });
         ctx.restore();
 
         // laser charge: a ring that fills while the shot is held
@@ -2877,21 +3022,16 @@ function draw() {
         ctx.translate(mf.x, mf.y);
         ctx.rotate(mf.angle);
         ctx.globalAlpha = k;
-        const flame = ctx.createRadialGradient(0, 0, 0, 0, 0, 16);
-        flame.addColorStop(0, 'rgba(255,255,220,0.95)');
-        flame.addColorStop(0.4, 'rgba(255,170,40,0.8)');
-        flame.addColorStop(1, 'rgba(255,80,0,0)');
-        ctx.fillStyle = flame;
-        ctx.beginPath();
-        ctx.arc(0, 0, 16 * (0.6 + k * 0.4), 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillStyle = 'rgba(255,235,180,0.9)';
-        ctx.beginPath();
-        ctx.moveTo(2, 0);
-        ctx.lineTo(16 * (0.5 + k), -4);
-        ctx.lineTo(16 * (0.5 + k), 4);
-        ctx.closePath();
-        ctx.fill();
+        // blocky pixel flame: stacked quads tapering out of the barrel
+        const reach = 8 + 10 * k;
+        ctx.fillStyle = 'rgba(255,170,40,0.85)';
+        ctx.fillRect(0, -5, reach, 10);
+        ctx.fillRect(reach, -3, 6, 6);
+        ctx.fillStyle = 'rgba(255,235,180,0.95)';
+        ctx.fillRect(2, -3, reach, 6);
+        ctx.fillRect(reach + 2, -2, 4, 4);
+        ctx.fillStyle = 'rgba(255,90,0,0.75)';
+        ctx.fillRect(reach + 6, -2, 4, 4);
         ctx.restore();
     }
 
