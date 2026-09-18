@@ -78,6 +78,27 @@
     #status { color: var(--muted); }
     #myBuff { color: var(--amber); }
     #playerCount { color: var(--text); }
+    #hauntBanner {
+        position: fixed;
+        top: 46px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 6;
+        display: none;
+        max-width: calc(100vw - 24px);
+        padding: 6px 16px;
+        border-radius: 18px;
+        background: rgba(11,12,10,0.85);
+        border: 1px solid var(--red);
+        color: var(--red);
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        text-align: center;
+        pointer-events: none;
+    }
+    #hauntBanner.on { display: block; }
     #banner {
         position: absolute;
         top: 40%;
@@ -507,8 +528,6 @@
     .boltNote.atk { color: #ff1744; border-color: #ff1744; }
     @keyframes boltIn { from { transform: translateX(24px); opacity: 0; } to { transform: none; opacity: 1; } }
     @keyframes boltOut { from { opacity: 1; } to { opacity: 0; } }
-    .hauntInvert { filter: invert(1) hue-rotate(180deg); transition: filter 0.12s; }
-    .blurStart { filter: blur(2px); transition: filter 0.2s; }
     .garageSection {
         display: flex;
         align-items: center;
@@ -569,25 +588,6 @@
         color: var(--muted);
     }
     .streakBadge.earned { color: #ffd600; border-color: #ffd600; }
-    #hauntTag {
-        position: fixed;
-        top: 14px;
-        left: 50%;
-        transform: translateX(-50%);
-        z-index: 6;
-        font-size: 10px;
-        letter-spacing: 0.3em;
-        text-transform: uppercase;
-        color: var(--red);
-        background: rgba(11,12,10,0.7);
-        border: 1px solid var(--red);
-        border-radius: 20px;
-        padding: 4px 14px;
-        pointer-events: none;
-        opacity: 0;
-        transition: opacity 0.3s;
-    }
-    #hauntTag.on { opacity: 1; }
 
     /* ---- Lobby (full page) ---- */
     #lobby {
@@ -730,6 +730,65 @@
     @media (max-width: 560px) {
         #emoteBar { display: none; }
     }
+    #devToggle {
+        position: fixed;
+        top: 8px;
+        right: 8px;
+        z-index: 40;
+        font-family: var(--mono);
+        font-size: 13px;
+        letter-spacing: 0.15em;
+        padding: 7px 12px;
+        border-radius: 6px;
+        cursor: pointer;
+        background: rgba(11,12,10,0.85);
+        color: var(--amber);
+        border: 1px solid var(--line2);
+    }
+    #devToggle.hidden, #devPanel.hidden { display: none; }
+    #devPanel {
+        position: fixed;
+        top: 48px;
+        right: 8px;
+        z-index: 41;
+        width: 320px;
+        max-height: calc(100vh - 60px);
+        overflow-y: auto;
+        padding: 14px;
+        border-radius: 10px;
+        background: rgba(11,12,10,0.94);
+        border: 1px solid var(--line);
+        font-family: var(--mono);
+        color: var(--text);
+        backdrop-filter: blur(4px);
+    }
+    .devHead {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-size: 15px;
+        letter-spacing: 0.18em;
+        color: var(--amber);
+        margin-bottom: 8px;
+    }
+    .devHead button { background: none; border: none; color: var(--muted); font-size: 22px; cursor: pointer; line-height: 1; }
+    .devLabel { font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); margin: 12px 0 6px; }
+    .devRow { display: flex; flex-wrap: wrap; gap: 6px; }
+    .devBtn {
+        flex: 1 1 auto;
+        min-width: 72px;
+        padding: 8px 10px;
+        cursor: pointer;
+        font-family: var(--mono);
+        font-size: 13px;
+        font-weight: 700;
+        background: transparent;
+        color: var(--text);
+        border: 1px solid var(--line2);
+        border-radius: 6px;
+    }
+    .devBtn:hover { border-color: var(--amber); color: var(--amber); }
+    .devBtn.on { border-color: var(--amber); color: var(--amber); background: rgba(224,169,56,0.12); }
 </style>
 </head>
 <body>
@@ -743,8 +802,8 @@
         <span id="myBolts"></span>
         <span id="playerCount"></span>
     </div>
-    <div id="hauntTag"></div>
     <div id="banner"></div>
+    <div id="hauntBanner"></div>
     <canvas id="gameCanvas" width="800" height="600"></canvas>
     <div id="help">Move/Aim: WASD / Arrows &nbsp;•&nbsp; Fire: Space &nbsp;•&nbsp; Emote: 1-7 &nbsp;•&nbsp; Chat: T &nbsp;•&nbsp; Scoreboard: Tab</div>
 </div>
@@ -782,6 +841,7 @@
                 <div class="garageSection"><span>Create a room</span></div>
                 <button id="createOpenBtn" class="lobbyBtn">Create open room</button>
                 <button id="createPrivateBtn" class="lobbyBtn">Create invite-only</button>
+                <button id="createPlaygroundBtn" class="lobbyBtn">Playground (bots)</button>
                 <div class="garageSection"><span>Join by code</span></div>
                 <div id="lobbyJoinRow">
                     <input id="lobbyCodeInput" maxlength="4" placeholder="CODE" autocomplete="off" spellcheck="false">
@@ -814,6 +874,29 @@
     </div>
 </div>
 
+<button id="devToggle" class="hidden">DEV</button>
+<div id="devPanel" class="hidden">
+    <div class="devHead">
+        <span>PLAYGROUND</span>
+        <button id="devClose">×</button>
+    </div>
+    <div class="devLabel">Grant powerup</div>
+    <div class="devRow" id="devPowers"></div>
+    <div class="devLabel">Drop powerup ahead</div>
+    <div class="devRow" id="devSpawns"></div>
+    <div class="devLabel">Sandbox</div>
+    <div class="devRow">
+        <button class="devBtn" data-dbg="addbot">+ Bot</button>
+        <button class="devBtn" data-dbg="removebot">- Bot</button>
+        <button class="devBtn" data-dbg="reset">Reset round</button>
+        <button class="devBtn" data-dbg="heal">Heal</button>
+        <button class="devBtn" data-dbg="god">God</button>
+        <button class="devBtn" data-dbg="bolts">+100 bolts</button>
+    </div>
+    <div class="devLabel">Haunts (loss curses)</div>
+    <div class="devRow" id="devHaunts"></div>
+</div>
+
 <script>
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
@@ -829,7 +912,7 @@ const hurtVignetteEl = document.getElementById('hurtVignette');
 const boltFeedEl = document.getElementById('boltFeed');
 const boltsEl = document.getElementById('myBolts');
 const playerCountEl = document.getElementById('playerCount');
-const hauntTagEl = document.getElementById('hauntTag');
+const hauntBannerEl = document.getElementById('hauntBanner');
 
 const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
 
@@ -924,6 +1007,95 @@ const POWERUP_META = {
     shield: { color: '#2979ff', label: 'B', name: 'SHIELD' },
     laser: { color: '#ff1744', label: 'L', name: 'LASER' },
 };
+
+// ---- Playground dev panel (sandbox rooms only) ----
+const HAUNT_META = [
+    { name: 'HAUNTED', desc: 'Tab title + arena taunts (15s)' },
+    { name: 'POSSESSED', desc: 'All four directions reversed (10s)' },
+];
+const devToggleEl = document.getElementById('devToggle');
+const devPanelEl = document.getElementById('devPanel');
+const devPowersEl = document.getElementById('devPowers');
+const devSpawnsEl = document.getElementById('devSpawns');
+const devHauntsEl = document.getElementById('devHaunts');
+let sandboxMode = false;
+
+function sendDbg(action, extra) {
+    sendWs(Object.assign({ type: 'dbg', action }, extra || {}));
+}
+function buildDevPanel() {
+    devPowersEl.innerHTML = '';
+    devSpawnsEl.innerHTML = '';
+    devHauntsEl.innerHTML = '';
+    for (const type of Object.keys(POWERUP_META)) {
+        const meta = POWERUP_META[type];
+        const grant = document.createElement('button');
+        grant.className = 'devBtn';
+        grant.textContent = meta.name;
+        grant.style.color = meta.color;
+        grant.title = `Grant ${meta.name} to your tank`;
+        grant.onclick = () => sendDbg('grant', { powerup: type });
+        devPowersEl.appendChild(grant);
+
+        const drop = document.createElement('button');
+        drop.className = 'devBtn';
+        drop.textContent = meta.label;
+        drop.style.color = meta.color;
+        drop.title = `Drop ${meta.name} on the ground ahead of you`;
+        drop.onclick = () => sendDbg('spawnpowerup', { powerup: type });
+        devSpawnsEl.appendChild(drop);
+    }
+    // Haunt buttons: set the server level AND preview the effect immediately.
+    for (let lv = 1; lv <= HAUNT_META.length; lv++) {
+        const meta = HAUNT_META[lv - 1];
+        const btn = document.createElement('button');
+        btn.className = 'devBtn';
+        btn.textContent = `L${lv}`;
+        btn.title = `${meta.name} — ${meta.desc}`;
+        btn.onclick = () => { sendDbg('haunt', { level: lv }); applyHaunt(lv); };
+        devHauntsEl.appendChild(btn);
+    }
+    const block = document.createElement('button');
+    block.className = 'devBtn';
+    block.textContent = 'BLOCK';
+    block.title = 'Preview a haunt absorbed by immunity (HAUNT BLOCKED)';
+    block.onclick = () => applyHaunt(1, true);
+    devHauntsEl.appendChild(block);
+
+    const immune = document.createElement('button');
+    immune.className = 'devBtn';
+    immune.textContent = 'IMMUNE';
+    immune.title = 'Grant one Haunt Immunity token (blocks the next haunt)';
+    immune.onclick = () => sendDbg('immunity');
+    devHauntsEl.appendChild(immune);
+
+    const clear = document.createElement('button');
+    clear.className = 'devBtn';
+    clear.textContent = 'CLEAR';
+    clear.title = 'Clear the active haunt and reset the level to 0';
+    clear.onclick = () => { sendDbg('haunt', { level: 0 }); clearHauntFx(); };
+    devHauntsEl.appendChild(clear);
+}
+function setDevVisible(on) {
+    devPanelEl.classList.toggle('hidden', !on);
+    devToggleEl.classList.toggle('on', on);
+}
+devToggleEl.onclick = () => setDevVisible(devPanelEl.classList.contains('hidden'));
+document.getElementById('devClose').onclick = () => setDevVisible(false);
+for (const btn of devPanelEl.querySelectorAll('[data-dbg]')) {
+    btn.onclick = () => {
+        sendDbg(btn.dataset.dbg);
+        if (btn.dataset.dbg === 'god') btn.classList.toggle('on');
+    };
+}
+buildDevPanel();
+window.addEventListener('keydown', (e) => {
+    if (e.target && e.target.tagName === 'INPUT') return;
+    if (e.key === '`' && sandboxMode) {
+        e.preventDefault();
+        setDevVisible(devPanelEl.classList.contains('hidden'));
+    }
+});
 
 // ---- Tank design (cosmetic) ----
 const DEFAULT_DESIGN = { name: '', hull: 'classic', turret: 'square', barrel: 'medium', treads: 'treads', color: '#FF4136', skin: null, trail: null, boom: null, spawn: null };
@@ -1493,8 +1665,6 @@ function computeKeyboardVector() {
     if (keys['d'] || keys['arrowright']) dx += 1;
     if (keys['w'] || keys['arrowup']) dy -= 1;
     if (keys['s'] || keys['arrowdown']) dy += 1;
-    // possessed: lateral controls scramble on a timer for the first ~10s
-    if (performance.now() < scrambleUntil) dx *= scrambleFlip;
     return { dx, dy };
 }
 let keyboardFire = false;
@@ -1655,12 +1825,25 @@ function handleMessage(event) {
         arena = data.arena;
         obstacles = data.obstacles;
         mapName = data.mapName || '';
+        sandboxMode = !!data.sandbox;
+        if (sandboxMode) {
+            devToggleEl.classList.remove('hidden');
+            setDevVisible(true);
+        } else {
+            devToggleEl.classList.add('hidden');
+            setDevVisible(false);
+        }
         canvas.width = arena.w;
         canvas.height = arena.h;
         shopItems = Array.isArray(data.shop) ? data.shop : [];
         mapsList = Array.isArray(data.maps) ? data.maps : [];
         streakSkinDefs = Array.isArray(data.streakSkins) ? data.streakSkins : [];
         applyCatalog(data);
+        // sandbox: skip the callsign gate so testing is one click
+        if (sandboxMode && !design.name) {
+            design.name = 'DEV';
+            if (nameInputEl) nameInputEl.value = 'DEV';
+        }
         sendDesign();
         buildForge();
     } else if (data.type === 'bank') {
@@ -1822,8 +2005,10 @@ setInterval(() => {
         return;
     }
     const kb = computeKeyboardVector();
-    const dx = kb.dx !== 0 ? kb.dx : stickDx;
-    const dy = kb.dy !== 0 ? kb.dy : stickDy;
+    let dx = kb.dx !== 0 ? kb.dx : stickDx;
+    let dy = kb.dy !== 0 ? kb.dy : stickDy;
+    // possessed: all four directions reversed for 10s
+    if (performance.now() < scrambleUntil) { dx = -dx; dy = -dy; }
     let fire = keyboardFire || touchFire;
     let aim = null;
     if (controlMode === 'aim') {
@@ -2028,117 +2213,68 @@ function pushForge() {
 }
 
 // ---- Haunts: the browser fights back when you keep losing ----
-const HAUNT_META = [
-    { name: 'HAUNTED', desc: 'Tab title turns into taunts' },
-    { name: 'CURSED', desc: 'Random beeps + blurry start' },
-    { name: 'POSSESSED', desc: 'Window shrinks, controls scramble' },
-    { name: 'HEXED', desc: 'Notification spam + screen inversion' },
-    { name: 'DAMNED', desc: 'Everything, plus a webcam request' },
-];
 const ORIG_TITLE = document.title;
+const HAUNT_WORDS = ['REKT', 'GIT GUD', 'MOM HELP', 'TOO SLOW', 'U WOT', 'GG EZ'];
+const HAUNT_TAUNT_MS = 15000; // how long the level-1 taunt hangs around
 let hauntActive = false;
 let hauntTimers = [];
 let hauntConsumedThisRound = false;
 let scrambleUntil = 0;
-let scrambleFlip = 1;
+let hauntWord = '';
+let hauntTextUntil = 0;
 
 function clearHauntFx() {
-    for (const t of hauntTimers) { clearInterval(t); }
+    for (const t of hauntTimers) { clearInterval(t); clearTimeout(t); }
     hauntTimers = [];
     document.title = ORIG_TITLE;
-    document.body.classList.remove('hauntInvert', 'blurStart');
     scrambleUntil = 0;
-    if (hauntTagEl) hauntTagEl.classList.remove('on');
+    hauntWord = '';
+    hauntTextUntil = 0;
+    if (hauntBannerEl) { hauntBannerEl.classList.remove('on'); hauntBannerEl.textContent = ''; }
     hauntActive = false;
 }
 
-function toggleInversion(count) {
-    let i = 0;
-    const togg = setInterval(() => {
-        document.body.classList.toggle('hauntInvert');
-        i++;
-        if (i >= count * 2) { document.body.classList.remove('hauntInvert'); clearInterval(togg); }
-    }, 400);
-    hauntTimers.push(togg);
-}
-
-function hauntBeeps() {
-    const beep = setInterval(() => {
-        if (audioCtx) tone(380 + Math.random() * 400, audioCtx.currentTime + 0.01, 0.06, 'square', 0.05);
-    }, 5000 + Math.random() * 10000);
-    hauntTimers.push(beep);
-}
-
+// L1: tab title cycles taunts for 15s, echoed across the arena floor
 function hauntTitle() {
-    const lines = ['REKT', 'GIT GUD', 'MOM HELP', 'TOO SLOW', 'U WOT', 'GG EZ'];
-    let li = 0;
-    const tim = setInterval(() => { document.title = lines[li++ % lines.length]; }, 2000);
+    let i = 0;
+    document.title = HAUNT_WORDS[0];
+    hauntWord = HAUNT_WORDS[0];
+    hauntTextUntil = performance.now() + HAUNT_TAUNT_MS;
+    const tim = setInterval(() => {
+        i = (i + 1) % HAUNT_WORDS.length;
+        document.title = HAUNT_WORDS[i];
+        hauntWord = HAUNT_WORDS[i];
+    }, 2000);
     hauntTimers.push(tim);
+    const off = setTimeout(() => clearHauntFx(), HAUNT_TAUNT_MS);
+    hauntTimers.push(off);
 }
 
-function hauntShrink() {
-    try {
-        if (window.resizeTo && window.outerWidth) {
-            window.resizeTo(Math.max(480, window.outerWidth - 30), Math.max(360, window.outerHeight - 30));
-        }
-    } catch (e) {}
-}
-
-function hauntNotify() {
-    try {
-        if ('Notification' in window && Notification.permission !== 'granted' && Notification.permission !== 'denied') {
-            Notification.requestPermission();
-        }
-        if ('Notification' in window && Notification.permission === 'granted') {
-            ['DEFEATED', 'AGAIN?', 'GIVE UP?', 'NICE TRY'].forEach((m, i) =>
-                setTimeout(() => { try { new Notification('Pixel Tank Duel', { body: m }); } catch (e) {} }, i * 600));
-        }
-    } catch (e) {}
-}
-
-function hauntCamera() {
-    try {
-        if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-            navigator.mediaDevices.getUserMedia({ video: true }).then((s) => {
-                setTimeout(() => s.getTracks().forEach((t) => t.stop()), 1200);
-            }).catch(() => {});
-        }
-    } catch (e) {}
-}
-
-function startScramble() {
+// L2: every direction is reversed for 10s, with the curse name across the floor
+function startReverse() {
     scrambleUntil = performance.now() + 10000;
-    scrambleFlip = 1;
-    const togg = setInterval(() => {
-        if (performance.now() >= scrambleUntil) { clearInterval(togg); scrambleFlip = 1; return; }
-        scrambleFlip *= -1;
-    }, 3200);
-    hauntTimers.push(togg);
+    hauntWord = 'POSSESSED';
+    hauntTextUntil = performance.now() + 10000;
+    const off = setTimeout(() => { scrambleUntil = 0; hauntWord = ''; hauntTextUntil = 0; }, 10000);
+    hauntTimers.push(off);
 }
 
 function applyHaunt(level, immune) {
     clearHauntFx();
     if (level <= 0) return;
     if (immune) {
-        hauntTagEl.textContent = 'HAUNT BLOCKED';
-        hauntTagEl.classList.add('on');
-        setTimeout(() => hauntTagEl.classList.remove('on'), 2600);
+        boltNote('HAUNT BLOCKED', 'atk');
         return;
     }
     hauntActive = true;
-    const lv = Math.min(5, level);
-    hauntTagEl.textContent = HAUNT_META[lv - 1].name;
-    hauntTagEl.classList.add('on');
-    if (lv >= 1) hauntTitle();
-    if (lv >= 2) {
-        hauntBeeps();
-        document.body.classList.add('blurStart');
-        setTimeout(() => document.body.classList.remove('blurStart'), 3000);
+    const lv = Math.min(HAUNT_META.length, level);
+    // Each tier is independent: it applies only its own effect.
+    if (lv === 1) hauntTitle();
+    else if (lv === 2) startReverse();
+    if (hauntBannerEl) {
+        hauntBannerEl.textContent = `${HAUNT_META[lv - 1].name} — ${HAUNT_META[lv - 1].desc}`;
+        hauntBannerEl.classList.add('on');
     }
-    if (lv >= 3) { hauntShrink(); startScramble(); }
-    if (lv >= 4) { hauntNotify(); toggleInversion(3); }
-    if (lv >= 5) hauntCamera();
-    boltNote(`HAUNTED · ${HAUNT_META[lv - 1].desc}`, 'atk');
 }
 
 // ---- Rendering ----
@@ -2387,6 +2523,25 @@ function draw() {
         ctx.lineTo(canvas.width, y + 0.5);
     }
     ctx.stroke();
+
+    // haunted: curse words scrawled across the arena floor (drawn over the tiles)
+    if (hauntWord && nowMs < hauntTextUntil) {
+        ctx.save();
+        ctx.globalAlpha = 0.16;
+        ctx.fillStyle = '#e0a938';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        let size = Math.floor(canvas.width * 0.18);
+        ctx.font = `bold ${size}px ui-monospace, monospace`;
+        const maxW = canvas.width * 0.9;
+        const w = ctx.measureText(hauntWord).width;
+        if (w > maxW) {
+            size = Math.max(24, Math.floor(size * (maxW / w)));
+            ctx.font = `bold ${size}px ui-monospace, monospace`;
+        }
+        ctx.fillText(hauntWord, canvas.width / 2, canvas.height / 2);
+        ctx.restore();
+    }
 
     for (const o of obstacles) {
         roundRect(ctx, o.x, o.y, o.w, o.h, Math.min(4, o.w / 2, o.h / 2));
@@ -2955,6 +3110,17 @@ function joinByCode() {
 
 document.getElementById('createOpenBtn').onclick = () => createRoom('open');
 document.getElementById('createPrivateBtn').onclick = () => createRoom('private');
+document.getElementById('createPlaygroundBtn').onclick = createPlayground;
+async function createPlayground() {
+    try {
+        const res = await fetch('/api/playground', { method: 'POST' });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) { lobbyMsgEl.textContent = data.error || 'Playground unavailable'; return; }
+        if (data.code) enterRoom(data.code);
+    } catch (e) {
+        lobbyMsgEl.textContent = 'Could not create playground';
+    }
+}
 document.getElementById('lobbyJoinBtn').onclick = joinByCode;
 lobbyCodeInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') joinByCode(); });
 

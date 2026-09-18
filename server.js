@@ -5,7 +5,7 @@ const { WebSocketServer } = require('ws');
 const http = require('http');
 
 const { TICK_MS } = require('./lib/config');
-const { sanitizeRoomCode, getRoom, createRoomWithVisibility, listOpenRooms, tickRooms } = require('./lib/rooms');
+const { sanitizeRoomCode, getRoom, createRoomWithVisibility, createSandboxRoom, listOpenRooms, tickRooms } = require('./lib/rooms');
 
 const PORT = Number(process.env.PORT) || 3000;
 const HOST = process.env.HOST || '0.0.0.0';
@@ -26,6 +26,12 @@ app.post('/api/rooms', (req, res) => {
   const visibility = req.body && req.body.visibility === 'private' ? 'private' : 'open';
   const room = createRoomWithVisibility(visibility);
   res.json({ code: room.code, visibility: room.visibility });
+});
+
+// Dev playground: bots + debug controls.
+app.post('/api/playground', (req, res) => {
+  const room = createSandboxRoom();
+  res.json({ code: room.code, sandbox: true });
 });
 
 // ---- Game sockets ----
