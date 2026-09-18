@@ -43,7 +43,7 @@ Powerups spawn on a fixed clock at fixed spots on each map (first at ~8 s, then 
 | Triple Shot | T (purple) | Fires a 3-bullet spread instead of 1 |
 | Ricochet | R (yellow) | Bullets survive 3 wall bounces instead of being destroyed on impact — rendered as bigger gold bullets, and exempt from the normal range limit |
 | Energy Shield | B (blue) | Absorbs the next bullet hit (including ricochets/spread shots), then shatters |
-| Laser | L (red) | Fires a fast beam that pierces walls and every tank in its path, hitting each enemy once (never its owner). Each wall it passes through keeps a permanent hole for the rest of the round — normal bullets fly through the holes, but tanks are still blocked |
+| Laser | L (red) | Hold fire for 0.5s to charge, then releases a fast beam that deals 2 HP and pierces walls and every tank in its path, hitting each enemy once (never its owner). Each wall it passes through keeps a permanent hole for the rest of the round — normal bullets fly through the holes, but tanks are still blocked |
 
 Your active buff shows as a badge above your tank and a countdown chip in the HUD.
 

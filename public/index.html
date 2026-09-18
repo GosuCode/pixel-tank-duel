@@ -1947,7 +1947,7 @@ function handleMessage(event) {
             }
             damageNumbers.push({
                 x: h.x, y: h.y, start: performance.now(),
-                text: h.kind === 'absorbed' ? 'BLOCK' : '-1',
+                text: h.kind === 'absorbed' ? 'BLOCK' : `-${h.dmg || 1}`,
                 color: h.kind === 'absorbed' ? '#7FDBFF' : color,
             });
         }
@@ -2794,6 +2794,23 @@ function draw() {
         const kick = kickAt ? Math.max(0, 1 - (performance.now() - kickAt) / 130) * kickMax : 0;
         drawTank(ctx, p.design || DEFAULT_DESIGN, (p.aim || 0) - p.angle, streakSkinFor(p.best), kick);
         ctx.restore();
+
+        // laser charge: a ring that fills while the shot is held
+        if (p.charge > 0) {
+            const c = Math.max(0, Math.min(1, p.charge));
+            ctx.save();
+            ctx.lineCap = 'round';
+            ctx.strokeStyle = 'rgba(255,23,68,0.25)';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, 25, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.strokeStyle = c >= 1 ? '#fff' : '#ff1744';
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, 25, -Math.PI / 2, -Math.PI / 2 + c * Math.PI * 2);
+            ctx.stroke();
+            ctx.restore();
+        }
 
         // brief white flash when this tank takes a hit
         const flashAge = hitFlash[id] ? performance.now() - hitFlash[id] : Infinity;
