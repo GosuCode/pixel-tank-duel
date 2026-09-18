@@ -900,11 +900,15 @@ const boomAnims = {}; // explosion id -> { start, x, y, color, seed }
 const lastHp = {}; // playerId -> last seen hp (to trigger the hit flash)
 const hitFlash = {}; // playerId -> performance.now() of last damage
 const seenHits = new Set(); // hit-event ids already reacted to
+const seenFires = new Set(); // muzzle-event ids already reacted to
+const muzzleFlashes = []; // { x, y, angle, start, by } transient muzzle flashes
+const barrelKick = {}; // playerId -> performance.now() of last shot (barrel recoil anim)
 const damageNumbers = []; // { x, y, text, color, start }
 let hitMark = { start: 0, kill: false }; // shooter hitmarker
 let hurtFlashAt = 0; // performance.now() when we last took damage
 let shakeUntil = 0; // screen shake window
 let shakeMag = 0;
+let shakeDur = 180; // ms the active shake lasts (used to decay from full strength)
 let chatOpen = false;
 let shopItems = [];
 let mapsList = [];
@@ -1005,7 +1009,7 @@ function streakSkinFor(best) {
     return out;
 }
 
-function drawTank(g, d, turretOffset = 0, streak = null) {
+function drawTank(g, d, turretOffset = 0, streak = null, recoil = 0) {
     let body = d.color;
     if (d.skin === 'skin_camo') body = '#6b7d3a';
     else if (d.skin === 'skin_neon') body = '#00e5ff';
@@ -1095,14 +1099,15 @@ function drawTank(g, d, turretOffset = 0, streak = null) {
     }
 
     const bl = BARREL_LEN[d.barrel] || BARREL_LEN.medium;
+    const bx = 5 - recoil;
     g.fillStyle = dark;
-    roundRect(g, 5, -3, bl, 6, 3);
+    roundRect(g, bx, -3, bl, 6, 3);
     g.fill();
     g.fillStyle = mid;
-    roundRect(g, 5, -3, bl, 2, 1);
+    roundRect(g, bx, -3, bl, 2, 1);
     g.fill();
     g.fillStyle = '#111';
-    roundRect(g, 5 + bl - 3, -4, 3, 8, 1.5);
+    roundRect(g, bx + bl - 3, -4, 3, 8, 1.5);
     g.fill();
     g.restore();
 }
@@ -1367,6 +1372,39 @@ function playExplosionSound(seed) {
     src.start(t);
     // sub-bass thump underneath
     sweep(140 + (seed % 4) * 12, 38, t, 0.4, 'sine', 0.32);
+}
+
+// Cannon fire: a deep pitch-dropping thump, a low-passed muzzle blast, and a crack.
+function playFireSound() {
+    ensureAudio();
+    if (!audioCtx) return;
+    const t = audioCtx.currentTime + 0.005;
+
+    // main boom: low sine sliding down = the body of the report
+    sweep(160, 34, t, 0.3, 'sine', 0.42);
+    // chest-punch transient
+    tone(120, t, 0.07, 'triangle', 0.28);
+
+    // muzzle blast: filtered noise burst that closes down fast
+    const dur = 0.22;
+    const buffer = audioCtx.createBuffer(1, Math.floor(audioCtx.sampleRate * dur), audioCtx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < data.length; i++) {
+        const env = Math.pow(1 - i / data.length, 3);
+        data[i] = (Math.random() * 2 - 1) * env;
+    }
+    const src = audioCtx.createBufferSource();
+    src.buffer = buffer;
+    const filter = audioCtx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.setValueAtTime(1400, t);
+    filter.frequency.exponentialRampToValueAtTime(120, t + dur);
+    const g = audioCtx.createGain();
+    g.gain.setValueAtTime(0.28, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    src.connect(filter).connect(g).connect(audioCtx.destination);
+    src.start(t);
+    src.stop(t + dur + 0.02);
 }
 
 // Hit feedback: a hit you land, a kill, an absorbed shot, or taking damage.
@@ -1694,6 +1732,13 @@ function handleMessage(event) {
                 seenBooms.add(ex.id);
                 boomAnims[ex.id] = { start: performance.now(), x: ex.x, y: ex.y, color: ex.color, seed: ex.id, boom: ex.boom };
                 playExplosionSound(ex.id);
+                // a destroyed tank rattles the camera: heavy up close, light far off
+                const me = myId ? players[myId] : null;
+                const d = me ? Math.hypot(ex.x - me.x, ex.y - me.y) : 0;
+                const prox = Math.max(0, 1 - d / 420);
+                const mag = 5 + 9 * prox;
+                const until = performance.now() + 240;
+                if (until > shakeUntil) { shakeUntil = until; shakeDur = 240; shakeMag = Math.max(shakeMag, mag); }
             }
         }
         const liveBooms = new Set(explosions.map((e) => e.id));
@@ -1712,7 +1757,8 @@ function handleMessage(event) {
             }
             if (h.target === myId) {
                 hurtFlashAt = performance.now();
-                shakeUntil = performance.now() + 180;
+                shakeUntil = performance.now() + 160;
+                shakeDur = 160;
                 shakeMag = h.kind === 'kill' ? 6 : 4;
                 playHitSound('hurt');
             }
@@ -1724,6 +1770,23 @@ function handleMessage(event) {
         }
         const liveHits = new Set(hitsIn.map((e) => e.id));
         for (const id of seenHits) if (!liveHits.has(id)) seenHits.delete(id);
+
+        const firesIn = data.fireEvents || [];
+        for (const f of firesIn) {
+            if (seenFires.has(f.id)) continue;
+            seenFires.add(f.id);
+            playFireSound();
+            muzzleFlashes.push({ x: f.x, y: f.y, angle: f.angle, start: performance.now(), by: f.by });
+            barrelKick[f.by] = performance.now();
+            // a camera kick on every shot: strongest for your own cannon
+            const me = myId ? players[myId] : null;
+            const fd = me ? Math.hypot(f.x - me.x, f.y - me.y) : 0;
+            const fmag = 1.5 + 3 * Math.max(0, 1 - fd / 500);
+            const funtil = performance.now() + 100;
+            if (funtil > shakeUntil) { shakeUntil = funtil; shakeDur = 100; shakeMag = Math.max(shakeMag, fmag); }
+        }
+        const liveFires = new Set(firesIn.map((f) => f.id));
+        for (const id of seenFires) if (!liveFires.has(id)) seenFires.delete(id);
 
         powerup = data.powerup;
         powerupNext = data.powerupNext || null;
@@ -2298,9 +2361,11 @@ function draw() {
     const nowMs = performance.now();
     let shakeX = 0, shakeY = 0;
     if (nowMs < shakeUntil) {
-        const k = (shakeUntil - nowMs) / 180;
+        const k = Math.min(1, (shakeUntil - nowMs) / shakeDur);
         shakeX = (Math.random() - 0.5) * 2 * shakeMag * k;
         shakeY = (Math.random() - 0.5) * 2 * shakeMag * k;
+    } else {
+        shakeMag = 0;
     }
     ctx.save();
     ctx.translate(shakeX, shakeY);
@@ -2431,10 +2496,43 @@ function draw() {
             }
             ctx.restore();
         }
-        ctx.fillStyle = b.hot ? '#ffd600' : '#fff';
+        // Tank shell: elongated metal round, pointed nose, hot exhaust tail.
+        const ang = Math.atan2(b.vy, b.vx);
+        const shellLen = b.hot ? 15 : 13;
+        const shellW = b.hot ? 3.4 : 3;
+        ctx.save();
+        ctx.translate(b.x, b.y);
+        ctx.rotate(ang);
+        ctx.fillStyle = b.hot ? 'rgba(255,196,0,0.85)' : 'rgba(255,150,60,0.7)';
         ctx.beginPath();
-        ctx.arc(b.x, b.y, b.hot ? 5 : 4, 0, Math.PI * 2);
+        ctx.moveTo(-shellLen * 0.5, 0);
+        ctx.lineTo(-shellLen * 0.5 - 6, -2.4);
+        ctx.lineTo(-shellLen * 0.5 - 6, 2.4);
+        ctx.closePath();
         ctx.fill();
+        const shellGrad = ctx.createLinearGradient(0, -shellW, 0, shellW);
+        shellGrad.addColorStop(0, '#f4f6f8');
+        shellGrad.addColorStop(0.45, '#aab2ba');
+        shellGrad.addColorStop(1, '#5b6169');
+        ctx.fillStyle = b.hot ? '#ffd600' : shellGrad;
+        ctx.beginPath();
+        ctx.moveTo(shellLen * 0.62, 0);
+        ctx.lineTo(shellLen * 0.12, -shellW);
+        ctx.lineTo(-shellLen * 0.5, -shellW);
+        ctx.quadraticCurveTo(-shellLen * 0.62, 0, -shellLen * 0.5, shellW);
+        ctx.lineTo(shellLen * 0.12, shellW);
+        ctx.closePath();
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(20,24,28,0.85)';
+        ctx.lineWidth = 0.8;
+        ctx.stroke();
+        ctx.fillStyle = 'rgba(196,150,60,0.9)';
+        ctx.fillRect(-shellLen * 0.42, -shellW, 1.6, shellW * 2);
+        ctx.fillStyle = 'rgba(255,255,255,0.9)';
+        ctx.beginPath();
+        ctx.arc(shellLen * 0.16, 0, shellW * 0.34, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
     }
 
     // Floor marker under your own tank (drawn before tanks so it sits on the ground)
@@ -2536,7 +2634,10 @@ function draw() {
         ctx.save();
         ctx.translate(p.x, p.y);
         ctx.rotate(p.angle);
-        drawTank(ctx, p.design || DEFAULT_DESIGN, (p.aim || 0) - p.angle, streakSkinFor(p.best));
+        const kickAt = barrelKick[id];
+        const kickMax = p.buff && p.buff.type === 'triple' ? 10 : p.buff && p.buff.type === 'laser' ? 6 : 4;
+        const kick = kickAt ? Math.max(0, 1 - (performance.now() - kickAt) / 130) * kickMax : 0;
+        drawTank(ctx, p.design || DEFAULT_DESIGN, (p.aim || 0) - p.angle, streakSkinFor(p.best), kick);
         ctx.restore();
 
         // brief white flash when this tank takes a hit
@@ -2583,6 +2684,34 @@ function draw() {
             const age = (performance.now() - tauntAnims[id].start) / 1000;
             drawTauntBubble(p, p.taunt.text, age);
         }
+    }
+
+    // Muzzle flashes from cannon fire (transient, drawn over the tanks)
+    for (let i = muzzleFlashes.length - 1; i >= 0; i--) {
+        const mf = muzzleFlashes[i];
+        const age = nowMs - mf.start;
+        if (age > 130) { muzzleFlashes.splice(i, 1); continue; }
+        const k = 1 - age / 130;
+        ctx.save();
+        ctx.translate(mf.x, mf.y);
+        ctx.rotate(mf.angle);
+        ctx.globalAlpha = k;
+        const flame = ctx.createRadialGradient(0, 0, 0, 0, 0, 16);
+        flame.addColorStop(0, 'rgba(255,255,220,0.95)');
+        flame.addColorStop(0.4, 'rgba(255,170,40,0.8)');
+        flame.addColorStop(1, 'rgba(255,80,0,0)');
+        ctx.fillStyle = flame;
+        ctx.beginPath();
+        ctx.arc(0, 0, 16 * (0.6 + k * 0.4), 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = 'rgba(255,235,180,0.9)';
+        ctx.beginPath();
+        ctx.moveTo(2, 0);
+        ctx.lineTo(16 * (0.5 + k), -4);
+        ctx.lineTo(16 * (0.5 + k), 4);
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
     }
 
     // Round-start "find yourself" cue on your own tank, first 1.5s only
