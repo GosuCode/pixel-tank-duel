@@ -606,6 +606,45 @@
     }
     .streakBadge.earned { color: #ffd600; border-color: #ffd600; }
 
+    /* ---- Device linking ---- */
+    #linkCodeBox { display: flex; gap: 12px; align-items: baseline; margin: 6px 0 2px; }
+    #linkCodeBox.hidden { display: none; }
+    #linkCode { font-size: 18px; letter-spacing: 0.34em; color: var(--amber); }
+    #linkCodeExp { font-size: 10px; letter-spacing: 0.14em; color: var(--muted); text-transform: uppercase; }
+    #linkCodeInput {
+        background: #0f1109;
+        border: 1px solid var(--line2);
+        border-radius: 6px;
+        color: var(--text);
+        font-family: var(--mono);
+        font-size: 12px;
+        letter-spacing: 0.28em;
+        text-transform: uppercase;
+        padding: 7px 9px;
+        width: 130px;
+    }
+    #deviceMsg { margin: 4px 0; min-height: 12px; font-size: 10px; letter-spacing: 0.14em; color: var(--red); }
+    #deviceIntro { margin: 0 0 8px; font-size: 9px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted); }
+    .deviceRow { display: flex; align-items: center; gap: 8px; font-size: 10px; letter-spacing: 0.12em; color: var(--muted); margin: 4px 0; }
+    .deviceRow .garageOpt { padding: 5px 9px; }
+    #linkBanner {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        z-index: 60;
+        background: rgba(11,12,10,0.96);
+        border-bottom: 1px solid var(--amber-dim);
+        color: var(--text);
+        font-family: var(--mono);
+        font-size: 12px;
+        letter-spacing: 0.12em;
+        padding: 10px 16px;
+        text-align: center;
+    }
+    #linkBanner.hidden { display: none; }
+    #linkBanner b { color: var(--amber); }
+
     /* ---- Lobby (full page) ---- */
     #lobby {
         position: fixed;
@@ -828,6 +867,7 @@
     </div>
     <div id="banner"></div>
     <div id="hauntBanner"></div>
+    <div id="linkBanner" class="hidden"></div>
     <canvas id="gameCanvas" width="800" height="600"></canvas>
     <div id="help">Move/Aim: WASD / Arrows &nbsp;•&nbsp; Fire: Space &nbsp;•&nbsp; Emote: 1-7 &nbsp;•&nbsp; Chat: T &nbsp;•&nbsp; Scoreboard: Tab</div>
 </div>
@@ -1163,6 +1203,9 @@ function openGarage() {
     drawPreview();
     refreshDeployState();
     if (!design.name && nameInputEl) nameInputEl.focus();
+    refreshPendingDevices();
+    clearInterval(devicePollTimer);
+    devicePollTimer = setInterval(refreshPendingDevices, 5000);
 }
 
 function shade(hex, factor) {
@@ -1459,6 +1502,7 @@ garageDoneEl.onclick = () => {
         return;
     }
     garageEl.classList.add('hidden');
+    clearInterval(devicePollTimer);
 };
 document.getElementById('customizeBtn').onclick = openGarage;
 window.addEventListener('keydown', (e) => { if (e.key.toLowerCase() === 'g') openGarage(); });
@@ -1903,6 +1947,10 @@ function handleMessage(event) {
             boltNote('haunt shield consumed', 'atk');
         }
         buildForge();
+    } else if (data.type === 'pendingApproval') {
+        // this device was linked but the owner has not approved it yet
+        showLinkPending();
+        pollLinkStatus();
     } else if (data.type === 'full') {
         showLobby(`Room ${roomCode} is full — pick another`);
         if (ws) { try { ws.close(); } catch (e) {} }
@@ -2093,6 +2141,211 @@ function shopColor(id) {
     return it ? it.color : '#e0a938';
 }
 
+// ---- Device linking (client) ----
+const linkBannerEl = document.getElementById('linkBanner');
+let linkTimer = null;
+let linkPoll = null;
+let devicePollTimer = null;
+
+function deviceLabel() {
+    const ua = navigator.userAgent || '';
+    const browser = /Firefox/.test(ua) ? 'Firefox' : /Edg\//.test(ua) ? 'Edge' : /Chrome/.test(ua) ? 'Chrome' : /Safari/.test(ua) ? 'Safari' : 'Browser';
+    const os = /Windows/.test(ua) ? 'Windows' : /Android/.test(ua) ? 'Android' : /iPhone|iPad/.test(ua) ? 'iOS' : /Mac/.test(ua) ? 'Mac' : /Linux/.test(ua) ? 'Linux' : '';
+    return (browser + (os ? ' ' + os : '')).slice(0, 24);
+}
+
+async function apiPost(path, body) {
+    try {
+        const r = await fetch(path, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify(body || {}),
+        });
+        return await r.json();
+    } catch (e) {
+        return { error: 'network' };
+    }
+}
+
+function deviceMsg(text) {
+    const el = document.getElementById('deviceMsg');
+    if (el) el.textContent = text || '';
+}
+
+function buildDevicePanel(holder) {
+    const sh = document.createElement('div');
+    sh.className = 'garageSection';
+    sh.innerHTML = '<span>Devices</span>';
+    holder.appendChild(sh);
+
+    const intro = document.createElement('p');
+    intro.id = 'deviceIntro';
+    intro.textContent = 'Play this account on another device without ever sharing your secret.';
+    holder.appendChild(intro);
+
+    const startRow = document.createElement('div');
+    startRow.className = 'garageRow';
+    const sl = document.createElement('span');
+    sl.className = 'garageLabel';
+    sl.textContent = 'Share';
+    startRow.appendChild(sl);
+    const so = document.createElement('div');
+    so.className = 'garageOpts';
+    const startBtn = document.createElement('button');
+    startBtn.className = 'garageOpt';
+    startBtn.textContent = 'Link a new device';
+    startBtn.onclick = startDeviceLink;
+    so.appendChild(startBtn);
+    startRow.appendChild(so);
+    holder.appendChild(startRow);
+
+    const codeBox = document.createElement('div');
+    codeBox.id = 'linkCodeBox';
+    codeBox.className = 'hidden';
+    const codeEl = document.createElement('span');
+    codeEl.id = 'linkCode';
+    const expEl = document.createElement('span');
+    expEl.id = 'linkCodeExp';
+    codeBox.appendChild(codeEl);
+    codeBox.appendChild(expEl);
+    holder.appendChild(codeBox);
+
+    const redeemRow = document.createElement('div');
+    redeemRow.className = 'garageRow';
+    const rl = document.createElement('span');
+    rl.className = 'garageLabel';
+    rl.textContent = 'Join';
+    redeemRow.appendChild(rl);
+    const ro = document.createElement('div');
+    ro.className = 'garageOpts';
+    const input = document.createElement('input');
+    input.id = 'linkCodeInput';
+    input.maxLength = 9;
+    input.placeholder = 'CODE';
+    input.autocomplete = 'off';
+    input.spellcheck = false;
+    const go = document.createElement('button');
+    go.className = 'garageOpt';
+    go.textContent = 'Link this device';
+    go.onclick = () => redeemDeviceLink(input.value);
+    ro.appendChild(input);
+    ro.appendChild(go);
+    redeemRow.appendChild(ro);
+    holder.appendChild(redeemRow);
+
+    const msg = document.createElement('p');
+    msg.id = 'deviceMsg';
+    holder.appendChild(msg);
+
+    const pendBox = document.createElement('div');
+    pendBox.id = 'devicePendingBox';
+    holder.appendChild(pendBox);
+    refreshPendingDevices();
+}
+
+async function startDeviceLink() {
+    deviceMsg('');
+    const out = await apiPost('/api/transfer/start', { token: deviceToken });
+    if (!out || out.error) { deviceMsg('Could not create a link code'); return; }
+    const box = document.getElementById('linkCodeBox');
+    const codeEl = document.getElementById('linkCode');
+    const expEl = document.getElementById('linkCodeExp');
+    if (!box || !codeEl || !expEl) return;
+    box.classList.remove('hidden');
+    codeEl.textContent = out.code.slice(0, 4) + '-' + out.code.slice(4);
+    const exp = out.expiresAt;
+    clearInterval(linkTimer);
+    const tick = () => {
+        const left = Math.max(0, Math.ceil((exp - Date.now()) / 1000));
+        expEl.textContent = left > 0 ? `expires in ${left}s` : 'expired';
+        if (left <= 0) clearInterval(linkTimer);
+    };
+    tick();
+    linkTimer = setInterval(tick, 1000);
+}
+
+async function redeemDeviceLink(rawCode) {
+    const code = String(rawCode || '').trim();
+    if (!code) return;
+    deviceMsg('');
+    const out = await apiPost('/api/transfer/redeem', { code, label: deviceLabel() });
+    if (!out || out.error) {
+        deviceMsg(out && out.error === 'expired' ? 'That code has expired' : 'That code is not valid');
+        return;
+    }
+    deviceToken = out.token;
+    localStorage.setItem('tankToken', deviceToken);
+    showLinkPending();
+    if (ws) { try { ws.close(); } catch (e) {} }
+    connectToRoom(roomCode);
+    pollLinkStatus();
+}
+
+async function refreshPendingDevices() {
+    const box = document.getElementById('devicePendingBox');
+    if (!box) return;
+    const garage = document.getElementById('garage');
+    if (garage && garage.classList.contains('hidden')) return;
+    const out = await apiPost('/api/transfer/pending', { token: deviceToken });
+    if (!out || !Array.isArray(out.pending) || !out.pending.length) { box.innerHTML = ''; return; }
+    box.innerHTML = '';
+    const h = document.createElement('p');
+    h.id = 'deviceIntro';
+    h.textContent = 'Waiting for your approval:';
+    box.appendChild(h);
+    for (const d of out.pending) {
+        const row = document.createElement('div');
+        row.className = 'deviceRow';
+        const label = document.createElement('span');
+        label.textContent = `${d.label} · ${d.fingerprint}`;
+        const ok = document.createElement('button');
+        ok.className = 'garageOpt';
+        ok.textContent = 'Approve';
+        ok.onclick = () => resolvePendingDevice(d.requestId, 'approve');
+        const no = document.createElement('button');
+        no.className = 'garageOpt';
+        no.textContent = 'Deny';
+        no.onclick = () => resolvePendingDevice(d.requestId, 'deny');
+        row.appendChild(label);
+        row.appendChild(ok);
+        row.appendChild(no);
+        box.appendChild(row);
+    }
+}
+
+async function resolvePendingDevice(requestId, action) {
+    const out = await apiPost(`/api/transfer/${action}`, { token: deviceToken, requestId });
+    deviceMsg(out && out.ok ? (action === 'approve' ? 'Device linked' : 'Device denied') : 'Could not update device');
+    refreshPendingDevices();
+}
+
+function showLinkPending() {
+    if (linkBannerEl) {
+        linkBannerEl.innerHTML = 'Waiting for approval on your other device… <b>keep this open</b>';
+        linkBannerEl.classList.remove('hidden');
+    }
+}
+function hideLinkPending() {
+    if (linkBannerEl) linkBannerEl.classList.add('hidden');
+}
+function pollLinkStatus() {
+    clearInterval(linkPoll);
+    linkPoll = setInterval(async () => {
+        const out = await apiPost('/api/transfer/status', { token: deviceToken });
+        if (out && out.status === 'approved') {
+            clearInterval(linkPoll);
+            hideLinkPending();
+            boltNote('device linked', 'atk');
+            if (ws) { try { ws.close(); } catch (e) {} }
+            connectToRoom(roomCode);
+        } else if (out && out.status === 'unknown') {
+            clearInterval(linkPoll);
+            hideLinkPending();
+            deviceMsg('Link was denied');
+        }
+    }, 4000);
+}
+
 function buildForge() {
     const holder = document.getElementById('forgeHolder');
     if (!holder) return;
@@ -2100,7 +2353,7 @@ function buildForge() {
 
     const intro = document.createElement('p');
     intro.id = 'forgeIntro';
-    intro.textContent = 'Bolts are earned in battle and bound to your callsign. Cosmetics never change stats.';
+    intro.textContent = 'Bolts are earned in battle and bound to your account. Cosmetics never change stats.';
     holder.appendChild(intro);
 
     const bal = document.createElement('p');
@@ -2226,6 +2479,8 @@ function buildForge() {
         useRow.appendChild(opts);
         holder.appendChild(useRow);
     }
+
+    buildDevicePanel(holder);
 }
 
 function pushForge() {

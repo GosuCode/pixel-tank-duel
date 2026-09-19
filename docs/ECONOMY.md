@@ -71,6 +71,18 @@ These are **earned, not bought** — unlocked by your best **win streak** (conse
 
 Balances, owned cosmetics, win/loss records and streaks are stored server-side in `data/players.json` (auto-created on first use).
 
-No login or signup. On first load the client generates a random **device token**, keeps it in `localStorage`, and sends it when it connects. The server keys your bank to that token, so progress survives server restarts and callsign changes — the callsign is display-only. Banks created before this feature (keyed by callsign) are adopted once on first connect.
+No login or signup. On first load the client generates a random **device token**, keeps it in `localStorage`, and sends it when it connects. The server maps that token to a durable **account**, so progress survives server restarts and callsign changes — the callsign is display-only. Only hashed tokens are written to disk; raw tokens and link codes are never logged. Banks created before this feature (keyed by callsign) are adopted once on first connect.
 
-Caveats: clearing site data, using private mode, or playing from another browser/device starts a fresh identity, and the token is a bearer secret — don't share it.
+### Linking another device
+
+You can play the same account on a second device without copying the secret:
+
+1. On a device already signed in, open the **Armory → Devices** panel and press **Link a new device**. A short single-use code appears (valid for 5 minutes).
+2. On the new device, open **Armory → Devices**, enter the code, and press **Link this device**.
+3. The new device connects and waits. Back on the original device, approve it in the same panel. It then loads the account automatically.
+
+The code alone cannot open the account: redeeming it only creates a *pending* device, and the original device must approve it. Each device gets its own token, so a lost or stolen device can be denied without affecting the others, and there is a per-account device cap.
+
+For the data model, API and security model, see **[ACCOUNTS.md](ACCOUNTS.md)**.
+
+Caveats: clearing site data or using private mode on a device loses that device's identity (link it again from another device to recover access). The device token is still a bearer secret for that one device — don't share it.

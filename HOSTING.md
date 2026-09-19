@@ -238,6 +238,11 @@ Editing `public/index.html` needs no restart — it's served from disk, just rel
   the game. `MAX_PLAYERS = 4` caps concurrent players per room.
 - **Credentials are sent in plaintext over LAN HTTP** (`:3000` direct). Over the tunnel it's HTTPS.
   Don't reuse a sensitive password for a LAN callsign.
+- **Device tokens and link codes are bearer secrets.** They travel in POST bodies (not URLs) and
+  only hashes are stored server-side, but over plain LAN HTTP a network sniffer can still capture
+  them. A link code is single-use, expires in 5 minutes, and only creates a *pending* device that
+  must be approved from an already-trusted device. Put the game behind HTTPS before exposing it
+  beyond a trusted LAN.
 
 ---
 

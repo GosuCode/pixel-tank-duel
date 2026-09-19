@@ -63,7 +63,7 @@ The Armory also has a **Controls** toggle: **Classic** (default) makes the turre
 
 - **Bolt economy & The Forge** — earn ⚡ in battle, spend it on cosmetics and consumables. See **[docs/ECONOMY.md](docs/ECONOMY.md)**.
 - **Haunts** — keep losing and your own browser fights back. See **[docs/HAUNTS.md](docs/HAUNTS.md)**.
-- **Persistence** — progress is tied to a device token in `localStorage`, so there's no login. See **[docs/ECONOMY.md#persistence](docs/ECONOMY.md#persistence)**.
+- **Persistence** — progress is tied to an account reached by a device token in `localStorage`, so there's no login. Link extra devices from the Armory's **Devices** panel. See **[docs/ECONOMY.md#persistence](docs/ECONOMY.md#persistence)** and **[docs/ACCOUNTS.md](docs/ACCOUNTS.md)**.
 
 ## Run it
 
@@ -134,7 +134,7 @@ server.js          Server wiring: HTTP/static + WebSocket + room dispatch
 lib/               Game modules (config, catalog, design, bank, room, rooms)
 public/index.html  Client: canvas renderer, input handling, HUD
 data/              Persisted player banks (players.json, auto-created)
-docs/              Gameplay, economy and haunt documentation
+docs/              Gameplay, economy, haunt and account documentation
 assets/            README screenshots
 deploy/            systemd unit (see HOSTING.md)
 ```
