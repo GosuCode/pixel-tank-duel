@@ -7,6 +7,7 @@ const http = require('http');
 const { TICK_MS } = require('./lib/config');
 const { sanitizeRoomCode, getRoom, createRoomWithVisibility, createSandboxRoom, listOpenRooms, totalPlayers, tickRooms } = require('./lib/rooms');
 const bank = require('./lib/bank');
+const { clientIp, makeLimiter } = require('./lib/ratelimit');
 
 const PORT = Number(process.env.PORT) || 3000;
 const HOST = process.env.HOST || '0.0.0.0';
@@ -15,8 +16,17 @@ const app = express();
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 
-app.use(express.json());
+app.use(express.json({ limit: '16kb' })); // game payloads are tiny; cap the body
 app.use(express.static('public'));
+
+// ---- Rate limiting ----
+// Keyed by the real client IP (see lib/ratelimit) so one abuser can't starve
+// everyone behind the tunnel. Buckets are swept so the maps stay small.
+const limitRoomCreate = makeLimiter(60, 10 * 60 * 1000);
+const limitTransferStart = makeLimiter(30, 10 * 60 * 1000);
+const limitTransferRedeem = makeLimiter(20, 10 * 60 * 1000);
+const limiters = [limitRoomCreate, limitTransferStart, limitTransferRedeem];
+setInterval(() => { for (const l of limiters) l.sweep(); }, 5 * 60 * 1000).unref();
 
 // ---- Lobby API ----
 app.get('/api/rooms', (req, res) => {
@@ -24,14 +34,18 @@ app.get('/api/rooms', (req, res) => {
 });
 
 app.post('/api/rooms', (req, res) => {
+  if (limitRoomCreate(clientIp(req))) return res.status(429).json({ error: 'rate-limited' });
   const visibility = req.body && req.body.visibility === 'private' ? 'private' : 'open';
   const room = createRoomWithVisibility(visibility);
+  if (!room) return res.status(503).json({ error: 'at-capacity' });
   res.json({ code: room.code, visibility: room.visibility });
 });
 
 // Dev playground: bots + debug controls.
 app.post('/api/playground', (req, res) => {
+  if (limitRoomCreate(clientIp(req))) return res.status(429).json({ error: 'rate-limited' });
   const room = createSandboxRoom();
+  if (!room) return res.status(503).json({ error: 'at-capacity' });
   res.json({ code: room.code, sandbox: true });
 });
 
@@ -40,19 +54,12 @@ app.post('/api/playground', (req, res) => {
 // open an account: the new device is created pending and must be approved from
 // an already-trusted device. Tokens and codes travel in the POST body, never
 // the URL, so they don't land in access logs.
-const redeemHits = new Map(); // ip -> { count, resetAt }
-function rateLimited(ip, limit = 20, windowMs = 10 * 60 * 1000) {
-  const now = Date.now();
-  let rec = redeemHits.get(ip);
-  if (!rec || now > rec.resetAt) { rec = { count: 0, resetAt: now + windowMs }; redeemHits.set(ip, rec); }
-  rec.count += 1;
-  return rec.count > limit;
-}
 function tokenFrom(req) {
   return bank.sanitizeToken(req.body && req.body.token);
 }
 
 app.post('/api/transfer/start', (req, res) => {
+  if (limitTransferStart(clientIp(req))) return res.status(429).json({ error: 'rate-limited' });
   const token = tokenFrom(req);
   if (!token) return res.status(400).json({ error: 'bad-token' });
   const out = bank.startTransfer(token);
@@ -61,8 +68,7 @@ app.post('/api/transfer/start', (req, res) => {
 });
 
 app.post('/api/transfer/redeem', (req, res) => {
-  const ip = req.ip || req.socket.remoteAddress || 'unknown';
-  if (rateLimited(ip)) return res.status(429).json({ error: 'rate-limited' });
+  if (limitTransferRedeem(clientIp(req))) return res.status(429).json({ error: 'rate-limited' });
   const out = bank.redeemTransfer(req.body && req.body.code, req.body && req.body.label);
   if (out.error) return res.status(400).json(out);
   res.json(out);

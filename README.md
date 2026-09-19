@@ -131,7 +131,7 @@ Full walkthrough, verification and troubleshooting: **[HOSTING.md](HOSTING.md)**
 
 ```
 server.js          Server wiring: HTTP/static + WebSocket + room dispatch
-lib/               Game modules (config, catalog, design, bank, room, rooms)
+lib/               Game modules (config, catalog, design, bank, room, rooms, ratelimit)
 public/index.html  Client: canvas renderer, input handling, HUD
 data/              Persisted player banks (players.json, auto-created)
 docs/              Gameplay, economy, haunt and account documentation

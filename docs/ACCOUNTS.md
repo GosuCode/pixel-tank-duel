@@ -127,12 +127,12 @@ WebSocket: the server pushes `{ type: 'pendingApproval', requestId, label }` to 
 | `TRANSFER_CODE_ALPHABET` | `ABCDEFGHJKMNPQRSTUVWXYZ23456789` | Code alphabet (no `I/L/O/0/1`) |
 | `TRANSFER_MAX_DEVICES` | `8` | Approved devices per account |
 
-The per-IP redeem limiter is in `server.js` (20 attempts / 10 minutes), in memory.
+The per-IP limiter keys on the real client address from `lib/ratelimit.js`. Direct (LAN) connections use the socket address; behind the Cloudflare Tunnel `cloudflared` dials in over loopback, so the address is taken from `CF-Connecting-IP`. Forwarded headers are trusted **only** from a loopback peer, so a LAN client cannot spoof them to dodge the limiter. Limits (`server.js`, in memory): 30 transfer starts and 20 redeems per IP per 10 minutes.
 
 ## Limitations
 
 - **No per-device revoke yet.** `deny` only removes a *pending* device. Revoking an already-approved device needs a new endpoint.
 - Pending link codes live in memory, so a server restart invalidates outstanding codes (already-linked pending devices survive, since they're in `accounts`).
-- The rate limiter is in-memory and per-process; it resets on restart and does not span multiple instances.
+- The rate limiter is in-memory and per-process; it resets on restart and does not span multiple instances. Edge rate limiting (Cloudflare) is the durable complement.
 - Device identity is per-browser-storage. Clearing site data or using private mode loses that device's token; recover by linking again from another approved device.
 - No email/OTP recovery: if every approved device is lost, the account is unreachable.

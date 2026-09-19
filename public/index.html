@@ -3521,7 +3521,12 @@ async function createRoom(visibility) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ visibility }),
         });
-        const data = await res.json();
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+            lobbyMsgEl.textContent = data.error === 'at-capacity' ? 'Server is at capacity — try again later'
+                : data.error === 'rate-limited' ? 'Too many rooms — slow down' : 'Could not create room';
+            return;
+        }
         if (data.code) enterRoom(data.code);
     } catch (e) {
         lobbyMsgEl.textContent = 'Could not create room';

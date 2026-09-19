@@ -243,6 +243,15 @@ Editing `public/index.html` needs no restart — it's served from disk, just rel
   them. A link code is single-use, expires in 5 minutes, and only creates a *pending* device that
   must be approved from an already-trusted device. Put the game behind HTTPS before exposing it
   beyond a trusted LAN.
+- **Abuse controls built into the server.** Request bodies are capped at 16 KB; room creation is
+  limited per IP (60 / 10 min) and refused once a global `MAX_ROOMS` (200) is reached; transfer
+  `start`/`redeem` are limited per IP (30 and 20 / 10 min). Over-limit requests get `429` with
+  `{ "error": "rate-limited" }`; a full server returns `503` with `{ "error": "at-capacity" }`.
+  The client IP is resolved correctly behind the tunnel (`CF-Connecting-IP`, trusted only from
+  loopback), so one abuser can't exhaust a shared bucket. Limits are in-process and reset on restart.
+- **What the app cannot do for you:** it cannot rate-limit at the edge, absorb a volumetric flood,
+  or gate access. For a public deployment add **Cloudflare Access** (Zero Trust) and a **rate-limiting
+  rule** on the hostname — those are the durable defense.
 
 ---
 
